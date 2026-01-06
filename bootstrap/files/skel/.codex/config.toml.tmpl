@@ -1,0 +1,10 @@
+model = "{{ .Codex.Model }}"
+model_reasoning_effort = "{{ .Codex.ModelReasoningEffort }}"
+approval_policy = "{{ .Codex.ApprovalPolicy }}"
+sandbox_mode = "{{ .Codex.SandboxMode }}"
+
+[features]
+web_search_request = {{ .Codex.Features.WebSearchRequest }}
+
+[sandbox_workspace_write]
+network_access = {{ .Codex.SandboxWorkspaceWrite.NetworkAccess }}

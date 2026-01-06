@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- BASE_HREF -->
+  <script>
+    window.centaurxConfig = {
+      uiMaxBufferLines: Number('UI_MAX_BUFFER_LINES') || 2000,
+    };
+  </script>
+  <title>Centaurx</title>
+  <link rel="stylesheet" href="assets/app.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-title">centaurx</span>
+      </div>
+      <div class="session" id="session"></div>
+    </header>
+
+    <main class="main">
+      <section class="panel" id="login-panel">
+        <h1>Login</h1>
+        <form id="login-form">
+          <label>
+            Username
+            <input type="text" id="login-username" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input type="password" id="login-password" autocomplete="current-password" required />
+          </label>
+          <label>
+            TOTP
+            <input type="text" id="login-totp" inputmode="numeric" required />
+          </label>
+          <button type="submit">Sign in</button>
+          <div class="error" id="login-error"></div>
+        </form>
+      </section>
+
+      <section class="panel hidden" id="terminal-panel">
+        <div class="tabs-bar" id="tabs-bar">
+          <button type="button" class="tabs-indicator" id="tabs-left" aria-label="Previous tabs" hidden>&lt;</button>
+          <div class="tabs" id="tabs"></div>
+          <button type="button" class="tabs-indicator" id="tabs-right" aria-label="Next tabs" hidden>&gt;</button>
+        </div>
+        <div class="status hidden" id="status">
+          <span class="status-text" id="status-text"></span>
+        </div>
+        <div class="terminal" id="terminal"></div>
+        <form class="prompt" id="prompt-form">
+          <textarea id="prompt-input" rows="1" placeholder="Type a prompt or /command" autocomplete="off"></textarea>
+          <button type="submit">Send</button>
+          <span class="prompt-spinner hidden" id="prompt-spinner" aria-hidden="true"></span>
+        </form>
+      </section>
+    </main>
+
+    <div class="modal hidden" id="chpasswd-modal" role="dialog" aria-modal="true" aria-labelledby="chpasswd-title">
+      <div class="modal-card">
+        <h2 id="chpasswd-title">Change password</h2>
+        <form id="chpasswd-form">
+          <label>
+            Current password
+            <input type="password" id="chpasswd-current" autocomplete="current-password" required />
+          </label>
+          <label>
+            New password
+            <input type="password" id="chpasswd-new" autocomplete="new-password" required />
+          </label>
+          <label>
+            Confirm new password
+            <input type="password" id="chpasswd-confirm" autocomplete="new-password" required />
+          </label>
+          <label>
+            TOTP
+            <input type="text" id="chpasswd-totp" inputmode="numeric" autocomplete="one-time-code" required />
+          </label>
+          <div class="error" id="chpasswd-error"></div>
+          <div class="modal-actions">
+            <button type="button" class="button-secondary" id="chpasswd-cancel">Cancel</button>
+            <button type="submit" id="chpasswd-submit">OK</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="codexauth-modal" role="dialog" aria-modal="true" aria-labelledby="codexauth-title">
+      <div class="modal-card">
+        <h2 id="codexauth-title">Upload Codex auth.json</h2>
+        <form id="codexauth-form">
+          <label>
+            auth.json file
+            <input type="file" id="codexauth-file" accept=".json,application/json" required />
+          </label>
+          <div class="error" id="codexauth-error"></div>
+          <div class="modal-actions">
+            <button type="button" class="button-secondary" id="codexauth-cancel">Cancel</button>
+            <button type="submit" id="codexauth-submit">Upload</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="rotatesshkey-modal" role="dialog" aria-modal="true" aria-labelledby="rotatesshkey-title">
+      <div class="modal-card">
+        <h2 id="rotatesshkey-title">Rotate SSH key</h2>
+        <form id="rotatesshkey-form">
+          <label>
+            Type YES to confirm
+            <input type="text" id="rotatesshkey-confirm" autocomplete="off" required />
+          </label>
+          <div class="error" id="rotatesshkey-error"></div>
+          <div class="modal-actions">
+            <button type="button" class="button-secondary" id="rotatesshkey-cancel">Cancel</button>
+            <button type="submit" id="rotatesshkey-submit">Rotate</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/tab_window.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

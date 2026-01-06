@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="systems.pkt.centaurx">
+
+    <application>
+        <receiver
+            android:name="systems.pkt.centaurx.debug.DebugEndpointReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="systems.pkt.centaurx.DEBUG_SET_ENDPOINT" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

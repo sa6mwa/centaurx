@@ -1,0 +1,14 @@
+FROM alpine:latest AS certs
+RUN apk add --no-cache ca-certificates
+
+FROM scratch
+ARG CENTAURX_BIN=bin/centaurx
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY ${CENTAURX_BIN} /usr/bin/centaurx
+WORKDIR /cx
+WORKDIR /cx/state
+WORKDIR /cx/repos
+WORKDIR /centaurx
+ENV LOG_MODE=json
+ENV HOME=/centaurx
+ENTRYPOINT ["/usr/bin/centaurx"]

@@ -1,0 +1,283 @@
+# Centaurx Backlog
+
+Checklist-style backlog organized for small, reviewable steps.
+
+- [x] P0: Observability + failure transparency (must-do, iterate until DONE)
+  - [x] **Runner logging regression + output forwarding**: centaurx serve must emit server-side logs for every runner command/exec (Info/Debug/Trace), include stdout+stderr forwarding, default runner LOG_MODE=json, and add regression tests + log reader that assert logs across the server↔runner flow.
+  - [x] **COMPREHENSIVE LOGGING EVERYWHERE**: add Warn/Info/Debug/Trace coverage across the codebase (HTTP, SSH, runner, service, repo, persistence, shipohoy, UI).
+  - [x] Surface runner failures to user buffers (system output) with clear, actionable messages (e.g. codex auth missing/401, runner exit, container start failure).
+  - [x] Make `/new` and prompt submission emit user-facing status lines while work is in-flight (starting runner, creating repo, cloning, git init, etc.).
+  - [x] Ensure runner errors are logged server-side with root cause (gRPC status, exit codes, stderr, container logs).
+  - [x] Expand tests to **assert** failure paths are surfaced (e.g. codex 401, runner not starting) and that user-visible output/logs appear.
+  - [x] Add tests that prove codex auth failure yields explicit errors (not silent blank output).
+  - [x] Runner lifecycle hygiene: runner containers must not linger after server exit/crash.
+    - [x] Implement server-side shutdown cleanup (close all runner tabs on Stop).
+    - [x] Add runner keepalive (ping every 10s; exit after 3 missed) so orphaned runners self-terminate.
+    - [x] Add tests that verify runners stop on server shutdown and auto-remove cleans them up.
+  - [x] **Context plumbing fix**: eliminate detached `context.Background()` usage that prevents cancellation; plumb request/session context through runner commands and codex exec so shutdown/timeout cancels correctly (SSH + HTTP + runner).
+    - [x] Replace background contexts in `internal/command/handler.go` and `core/service.go` with caller contexts or derived timeouts.
+    - [x] Add regression tests that ensure cancellation propagates (e.g. HTTP request cancel does not orphan runner; service shutdown stops in-flight operations).
+  - [x] **Regression tests for runner repo root mapping**: add unit tests that fail if `runner.repo_root` is set to a host path (e.g. equals `runner.host_repo_root`), and ensure `runnercontainer.NewProvider` refuses host paths when `HostRepoRoot` is set.
+
+- [x] P0: TUI/Web theming + formatting (outrun default, future palettes)
+  - [x] **SSH TUI tab bar redesign (approach A)**:
+    - [x] Render a full-width colored tab bar (solid background across entire top line) so output cannot overdraw it.
+    - [x] Active tab is indicated by background color change (no `[]` brackets).
+    - [x] Introduce an ANSI-aware tab renderer that trims by visible width without cutting escape codes.
+    - [x] Sanitize output lines for SSH TUI rendering (strip ANSI/control sequences like `\x1b[` and bare `\r`) to prevent top-bar corruption.
+    - [x] Add regression tests for: tab bar always renders on line 1; active tab background color changes; ANSI/control sequences in output cannot hide the bar.
+  - [x] Theme registry:
+    - [x] Default theme name `outrun` (formerly `outrun-electric`).
+    - [x] Additional palettes registered: `gruvbox`, `tokyo-midnight` (selectable but not necessarily wired to config yet).
+    - [x] `/theme <name>` command supported in SSH TUI and HTTP UI.
+  - [x] Stream formatting tweaks:
+    - [x] Remove `stderr:` prefix; instead render stderr lines in a high-contrast pink (outrun palette) with bold styling in SSH TUI.
+    - [x] Ensure error lines remain red across both SSH and web UI.
+  - [x] Markdown rendering (SSH TUI + web UI) per `MESSAGES.md`:
+    - [x] `item.type: command_execution` stays plain (no markdown), but add `/togglefullcommandoutput` (default terse: max 5 lines of command + output) with mode toggle persisted per user/session.
+    - [x] `item.type: reasoning` render markdown; default italic; bold is bold-italic; apply distinct outrun blue/pink color (not same as agent text).
+    - [x] `item.type: agent_message` render markdown; bold/italic styles; inline code in accent color.
+    - [x] Decide whether to adopt a markdown renderer or a minimal internal parser (document the choice + tests).
+  - [x] **Worked-for separator line** before final `item.completed` agent_message:
+    - [x] Add a full-width divider (e.g. `─ Worked for 19s ─────`) in SSH TUI.
+    - [x] Add the same in web UI (CSS-driven full-width rule).
+    - [x] Compute duration from prompt start to final item completion; show `s`/`m`/`h` as appropriate.
+  - [x] **Web UI TAB key behavior**:
+    - [x] TAB should only cycle between tabs (not move focus between input/terminal/etc).
+    - [x] Add chromedp regression test asserting TAB cycles to the next tab.
+  - [x] Web UI multiline input scrollbar should be themed (match current palette; no default white scrollbar).
+
+- [x] P0: SSH auth hardening + pubkey management
+  - [x] Require SSH pubkey authentication **and** TOTP (prompt after successful pubkey auth).
+  - [x] SSH TOTP prompt must be exactly `Verification code: ` (no echo).
+  - [x] Do not auto-generate SSH login pubkeys on user creation; new users have zero login pubkeys.
+  - [x] Add admin CLI pubkey management (add/list/remove) for users.
+  - [x] Add user commands:
+    - [x] `/addloginpubkey <pubkey>`
+    - [x] `/listloginpubkeys`
+    - [x] `/rmloginpubkey <id>` (1-based in insertion order)
+    - [x] `/pubkey` (print git SSH public key for use in GitHub, etc.)
+  - [x] Tests: SSH auth flow requires pubkey + TOTP; prompt text and no-echo behavior asserted.
+  - [x] Tests: anonymous users rejected; wrong pubkey rejected; missing/wrong TOTP rejected; any valid pubkey for a user succeeds.
+  - [x] Tests: only pubkeys associated with the username are accepted (no cross-user auth).
+
+- [x] P0: Terminal UX regression (copy/paste)
+  - [x] Fix SSH TUI selection so mouse drag selection persists and can be copied (avoid redundant redraws that clear selection).
+  - [x] Add regression test that ensures SSH TUI does not redraw when state is unchanged (prevents selection loss).
+
+- [x] P1: Session UX + tab isolation
+  - [x] `/renew` command: renew the current tab by starting a fresh codex session (new session ID) without changing repo/tab name.
+  - [x] Tab switching is session-scoped: active tab changes in one SSH session do not affect other SSH sessions or the web UI (and vice versa).
+
+- [x] Phase 0: Repo hygiene and scaffolding
+  - [x] Add `doc.go` to each new package (Go package docs).
+  - [x] Create `.golangci.yml` in repo root if missing (per AGENTS.md).
+  - [x] Establish module layout:
+    - [x] `cmd/centaurx` (CLI)
+    - [x] `centaurx` (root compositor)
+    - [x] `core` (service API + implementation)
+    - [x] `schema` (domain data types)
+    - [x] `httpapi` (HTTP API + UI)
+    - [x] `sshserver` (SSH server)
+    - [x] `internal/...` for implementation details
+  - [x] Refactor package layout to avoid import cycles (core/schema split + root compositor)
+
+- [x] Phase 1: Core domain model (transport-agnostic)
+  - [x] Define core types:
+    - [x] `Tab`, `TabID`, `TabName`, `SessionID`, `RepoRef`
+    - [x] `Buffer` (scrollback) with cursor and scroll position
+    - [x] `Event` types for parsed codex JSONL
+    - [x] `Renderer` interface for SSH/HTTP formatting
+    - [x] `Command` / `SlashCommand` routing
+  - [x] Implement tab manager:
+    - [x] Create, close, switch, list
+    - [x] Per-user tab registry
+    - [x] Scrollback persistence per tab
+  - [x] Implement repo manager:
+    - [x] Repo prefix config
+    - [x] `/new` creates repo dir + `git init`
+    - [x] `/repo` validates `repo/.git`
+    - [x] `/listrepos` enumerates repo dirs
+
+- [x] Phase 2: Codex exec runner + JSONL parsing
+  - [x] Implement `codex exec` runner:
+    - [x] Start new session (`codex exec --json <prompt>`)
+    - [x] Resume existing session (`codex exec resume <id> --json <prompt>`)
+    - [x] Thread ID capture from `thread.started`
+    - [x] Per-tab model selection
+    - [x] Support prompt via stdin using `-`
+  - [x] JSONL parser:
+    - [x] Discriminated union on `type`
+    - [x] Tolerant to unknown fields/types
+    - [x] Parse `item.*` types (`agent_message`, `reasoning`, `command_execution`, etc.)
+  - [x] Output formatter:
+    - [x] Convert parsed events into lines for terminal buffer
+    - [x] Separate SSH vs HTTP formatting (no ANSI in HTTP)
+  - [x] Mock codex exec CLI:
+    - [x] `centaurx codex-mock` subcommand with `exec` and `exec resume <id>`
+    - [x] Support prompt via args or stdin (`-`)
+    - [x] Emit deterministic JSONL with varied event shapes
+    - [x] Support optional `--seed`, `--scenario`, `--delay-ms`, `--linger-ms`
+    - [x] Handle SIGHUP/SIGTERM gracefully (emit error event, exit)
+
+- [x] Phase 3: Slash commands
+  - [x] `/new <repo_name>`:
+    - [x] Open existing repo in a new tab if it already exists
+    - [x] Create repo dir and `git init`
+    - [x] Switch to `centaurx` branch on creation
+    - [x] New tab named after repo (truncate to 10 chars; if longer, use first 9 chars + `$`)
+  - [x] `/repo` removed (use `/new` for create/open)
+  - [x] `/listrepos`
+  - [x] `/rm <number_or_name>`
+  - [x] **Command semantics update**:
+    - [x] Add `/close` to close the current tab (no args).
+    - [x] `/quit`, `/exit`, `/logout` should **exit the SSH session** (no tab close).
+    - [x] Ensure `/quit` no longer aliases `/rm` anywhere (SSH/HTTP/UI/handler).
+  - [x] `/model <model>` per-tab model selection
+    - [x] Normalize/validate to `[A-Za-z0-9._-]`
+    - [x] If missing argument, return syntax error and include seeded model list
+  - [x] `/stop` or `/z`:
+    - [x] SIGTERM, wait 10s
+    - [x] SIGKILL if still running
+    - [x] Emit status messages
+  - [x] `/git commit [message]`:
+    - [x] `git add -A`
+    - [x] If message missing, call codex exec resume with `gpt-5.1-codex-mini`
+    - [x] Use returned single-line message for `git commit -m`
+
+- [x] Phase 3b: State persistence
+  - [x] Persist per-user tabs, buffers, scroll offsets, and session ids to disk
+  - [x] Load persisted state on startup
+
+- [x] Phase 4: Runner split + IPC (gRPC over UDS)
+  - [x] Define gRPC proto for runner (see `docs/runner-grpc.md`):
+    - [x] Start new codex session (exec)
+    - [x] Resume codex session (exec resume)
+    - [x] Run shell command (for `!` and `/git`)
+    - [x] Signal session (stop/z)
+    - [x] Server-streamed events for output
+  - [x] Add `proto/runner/v1/runner.proto` (spec only; no codegen yet)
+  - [x] Add top-level `generate.go` using `protoc` (no codegen run yet)
+  - [x] Add `internal/runnerpb` package placeholder with `doc.go`
+  - [x] Add `centaurx runner` gRPC server (wraps codex exec + shell commands)
+  - [x] Add gRPC client in `centaurx` server and replace local runner usage
+  - [x] Use Unix domain sockets only (no TCP); add configurable socket path
+  - [x] Bump config version to enforce runner socket path
+  - [x] Ensure runner supports stdin prompts and preserves thread_id semantics
+
+- [x] Phase 4b: Per-user repo isolation
+  - [x] Per-user repo roots: `$HOME/.centaurx/repos/<user>/...`
+  - [x] Enforce username validation `[a-z0-9._-]` in users CLI (no normalization)
+  - [x] Update repo manager to scope list/open/create to the authenticated user
+
+- [x] Phase 4c: Per-user SSH credentials (Option B)
+  - [x] Store per-user SSH private keys encrypted at rest (kryptograf)
+  - [x] Extend `centaurx users`:
+    - [x] Generate SSH key on `users add` (ed25519 default)
+    - [x] Support `--ssh-key-type` (ed25519 | rsa) and `--ssh-key-bits`
+    - [x] Output public key for user onboarding (GitHub, etc.)
+    - [x] Add `users rotate-ssh-key`
+  - [x] Implement per-user SSH agent in server (x/crypto/ssh/agent)
+  - [x] Expose per-user agent socket to runner (shared volume)
+
+- [x] Phase 4d: Extended commands and repo flows (post-runner split)
+  - [x] `/help` slash command with concise usage for all supported commands
+  - [x] `! <cmd>` run arbitrary shell commands in the tab's repo directory (via runner)
+  - [x] `/new` accepts SSH git URLs (e.g. `github.com/org/repo`) and clones:
+    - [x] Use SSH by default (convert to `git@host:org/repo.git` where needed)
+    - [x] Tab name = repo basename (truncate to 10 chars; if longer, use first 9 chars + `$`)
+    - [x] If repo already exists locally, open it in a new tab (no clone)
+    - [x] Only local repo creation switches to `centaurx` branch (do not switch on clones)
+
+- [x] Phase 5: SSH server (TUI)
+  - [x] SSH server:
+    - [x] `gliderlabs/ssh` session handling
+    - [x] PTY allocation via `gliderlabs/ssh`
+    - [x] Window resize handling
+    - [x] Auto-generate host key if missing
+  - [x] TUI renderer:
+    - [x] Top row tab bar
+    - [x] Scrollback viewport + prompt
+    - [x] TAB to switch tabs
+    - [x] PageUp/PageDown to scroll
+    - [x] Typing cancels scrollback
+  - [x] Prompt editing:
+    - [x] Custom line editor (ctrl+w, alt+f/b, ctrl+a/e)
+    - [x] Screen renderer + cursor positioning
+  - [x] Spinner prompt when codex is running:
+    - [x] Rotate `|/-\` every ~250ms
+    - [x] Allow input while running; queue prompts until current run completes
+    - [x] Allow slash commands and `!` while spinner active
+
+- [x] Phase 6: HTTP API + UI
+  - [x] Auth:
+    - [x] JSON file at `~/.centaurx/users.json`
+    - [x] bcrypt password hashing
+    - [x] TOTP via `pquerna/otp`
+    - [x] Session cookie (long-lived) + logout endpoint
+  - [x] API:
+    - [x] List tabs, create tab, close tab
+    - [x] Send prompt to tab
+    - [x] Stream output via SSE (EventSource)
+    - [x] Switch tabs and query scrollback buffer
+  - [x] UI:
+    - [x] Single-page app (minimal JS + SSE)
+    - [x] Monospace terminal-lookalike
+    - [x] Tab bar + scrollback + prompt per tab
+    - [x] No ANSI rendering; plain text
+    - [x] Mobile-friendly (Chrome/Duck)
+    - [x] Keyboard tab cycling (TAB) for HTTP view
+    - [x] Preserve per-tab scroll position + auto-scroll toggle
+
+- [x] Phase 7: Config and CLI
+  - [x] Viper config file:
+    - [x] Repo prefix (default `$HOME/.centaurx/repos`)
+    - [x] Default model
+    - [x] Allowed models list
+    - [x] HTTP auth users (seeded)
+    - [x] SSH/HTTP ports
+    - [x] Codex exec path/flags if needed
+    - [x] Runner socket path (UDS)
+    - [x] Per-user repo roots under `repo_root/<user>`
+    - [x] SSH key storage paths (key store + key dir + agent dir)
+    - [x] Config version bump to `4` for breaking changes
+  - [x] Cobra CLI:
+    - [x] `centaurx serve` (start SSH + HTTP)
+    - [x] `centaurx bootstrap` (dump default config)
+    - [x] `centaurx version`
+    - [x] `centaurx users` (list/add/delete/chpasswd/rotate-totp)
+
+- [x] Phase 8: Quality gates and tests
+  - [x] Add tests for:
+    - [x] JSONL parsing and session id capture
+    - [x] Repo manager behavior (`/new`, `/listrepos`)
+    - [x] Slash command routing
+    - [x] Buffer scroll/viewport logic
+    - [x] State persistence load/save (integration coverage)
+    - [x] HTTP API + SSE integration tests
+    - [x] SSH session integration tests
+    - [x] Web UI smoke test (chromedp)
+    - [x] gRPC runner integration tests (start/run/stop/stream)
+    - [x] `!` command and queued prompt behavior tests
+    - [x] Ensure integration tests run without containers (local binaries + UDS)
+  - [x] Run required checks:
+    - [x] `go test ./...`
+    - [x] `go vet ./...`
+    - [x] `golint ./...`
+    - [x] `golangci-lint run ./...`
+
+- [x] Phase 9: Containerization (nerdctl compose)
+  - [x] Ensure `centaurx` runs as PID1 via `pkt.systems/psi` before containerizing
+  - [x] Add Containerfile for `centaurx` (server container)
+  - [x] Add Containerfile for `cxrunner` (runner container)
+  - [x] Add `docker-compose.yaml`:
+    - [x] Build both images
+    - [x] Expose HTTP 27480 and SSH 27422
+    - [x] Shared volume for repos and runner socket
+    - [x] Mount per-user SSH agent sockets into runner
+    - [x] Run both containers with host UID/GID (rootless)
+    - [x] Mount host containerd socket at `/run/user/<uid>/containerd/containerd.sock` into `centaurx` and set `XDG_RUNTIME_DIR=/run/user/<uid>`
+
+- [x] Open questions (remaining)
+  - [x] Confirm session model for HTTP (per-user scope vs multi-user sharing).
+  - [x] Define master key source and rotation strategy for encrypted SSH keys.

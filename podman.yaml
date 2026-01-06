@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: centaurx
+spec:
+  containers:
+    - name: centaurx
+      image: docker.io/pktsystems/centaurx:latest
+      args: ["serve", "-c", "/cx/config-for-container.yaml"]
+      env:
+        - name: HOME
+          value: /centaurx
+      ports:
+        - containerPort: 27480
+          hostPort: 27480
+          protocol: TCP
+        - containerPort: 27422
+          hostPort: 27422
+          protocol: TCP
+      securityContext:
+        readOnlyRootFilesystem: true
+      volumeMounts:
+        - name: centaurx-state
+          mountPath: /cx/state
+        - name: centaurx-repos
+          mountPath: /cx/repos
+        - name: centaurx-config
+          mountPath: /cx/config-for-container.yaml
+          readOnly: true
+        - name: podman-sock
+          mountPath: /cx/podman.sock
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: run
+          mountPath: /run
+        - name: var-run
+          mountPath: /var/run
+        - name: var-tmp
+          mountPath: /var/tmp
+        - name: centaurx-home
+          mountPath: /centaurx
+  volumes:
+    - name: centaurx-state
+      hostPath:
+        path: state
+        type: DirectoryOrCreate
+    - name: centaurx-repos
+      hostPath:
+        path: repos
+        type: DirectoryOrCreate
+    - name: centaurx-config
+      hostPath:
+        path: config-for-container.yaml
+        type: File
+    - name: podman-sock
+      hostPath:
+        path: /run/user/1000/podman/podman.sock
+        type: Socket
+    - name: tmp
+      emptyDir:
+        medium: Memory
+    - name: run
+      emptyDir:
+        medium: Memory
+    - name: var-run
+      emptyDir:
+        medium: Memory
+    - name: var-tmp
+      emptyDir:
+        medium: Memory
+    - name: centaurx-home
+      emptyDir:
+        medium: Memory

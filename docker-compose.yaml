@@ -1,0 +1,24 @@
+name: centaurx
+
+services:
+  centaurx:
+    image: docker.io/pktsystems/centaurx:latest
+    container_name: centaurx
+    read_only: true
+    environment:
+      - HOME=/centaurx
+    tmpfs:
+      - /tmp
+      - /run
+      - /var/run
+      - /var/tmp
+      - /centaurx
+    ports:
+      - "27480:27480"
+      - "27422:27422"
+    volumes:
+      - ./state:/cx/state
+      - ./repos:/cx/repos
+      - ./config-for-container.yaml:/cx/config-for-container.yaml:ro
+      - /run/user/${UID}/podman/podman.sock:/cx/podman.sock:ro
+    command: ["serve", "-c", "/cx/config-for-container.yaml"]

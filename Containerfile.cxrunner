@@ -1,0 +1,17 @@
+FROM debian:stable-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+ARG BIN_DIR=bin
+COPY ${BIN_DIR}/ /opt/bin/
+RUN install -m 0755 /opt/bin/centaurx /usr/bin/centaurx \
+  && ln -sf /usr/bin/centaurx /usr/bin/centaurx-codex-mock \
+  && ln -sf /usr/bin/centaurx /usr/bin/codex-mock \
+  && rm -rf /opt/bin \
+  && mkdir -p /centaurx /cx
+ARG RUNNER_INSTALL=files/cxrunner-install.sh
+COPY ${RUNNER_INSTALL} /tmp/cxrunner-install.sh
+RUN bash /tmp/cxrunner-install.sh \
+  && rm -f /tmp/cxrunner-install.sh
+ENV LOG_MODE=json
+ENTRYPOINT ["/usr/bin/centaurx"]

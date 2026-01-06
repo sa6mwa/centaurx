@@ -1,0 +1,179 @@
+syntax = "proto3";
+
+package centaurx.runner.v1;
+
+option go_package = "pkt.systems/centaurx/internal/runnerpb;runnerpb";
+
+service Runner {
+  rpc Exec(ExecRequest) returns (stream RunnerEvent);
+  rpc ExecResume(ExecResumeRequest) returns (stream RunnerEvent);
+  rpc RunCommand(RunCommandRequest) returns (stream RunnerEvent);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc SignalSession(SignalRequest) returns (SignalResponse);
+  rpc GetUsage(UsageRequest) returns (UsageResponse);
+}
+
+message ExecRequest {
+  string run_id = 1;
+  string working_dir = 2;
+  string prompt = 3;
+  string model = 4;
+  bool json = 5;
+  string ssh_auth_sock = 6;
+}
+
+message ExecResumeRequest {
+  string run_id = 1;
+  string working_dir = 2;
+  string prompt = 3;
+  string model = 4;
+  string resume_session_id = 5;
+  bool json = 6;
+  string ssh_auth_sock = 7;
+}
+
+message RunCommandRequest {
+  string run_id = 1;
+  string working_dir = 2;
+  string command = 3;
+  bool use_shell = 4;
+  string ssh_auth_sock = 5;
+}
+
+message PingRequest {}
+
+message PingResponse {
+  bool ok = 1;
+}
+
+message SignalRequest {
+  string run_id = 1;
+  ProcessSignal signal = 2;
+}
+
+message SignalResponse {
+  bool ok = 1;
+  string message = 2;
+}
+
+message UsageRequest {}
+
+message UsageResponse {
+  bool chatgpt = 1;
+  UsageWindow primary_window = 2;
+  UsageWindow secondary_window = 3;
+}
+
+message UsageWindow {
+  double used_percent = 1;
+  int64 limit_window_seconds = 2;
+  int64 reset_at = 3;
+}
+
+enum ProcessSignal {
+  PROCESS_SIGNAL_UNSPECIFIED = 0;
+  PROCESS_SIGNAL_HUP = 1;
+  PROCESS_SIGNAL_TERM = 2;
+  PROCESS_SIGNAL_KILL = 3;
+}
+
+message RunnerEvent {
+  string run_id = 1;
+  oneof payload {
+    ExecEvent exec = 2;
+    CommandOutput command_output = 3;
+    RunStatus status = 4;
+  }
+}
+
+message RunStatus {
+  RunState state = 1;
+  int32 exit_code = 2;
+  string message = 3;
+}
+
+enum RunState {
+  RUN_STATE_UNSPECIFIED = 0;
+  RUN_STATE_STARTED = 1;
+  RUN_STATE_FINISHED = 2;
+  RUN_STATE_FAILED = 3;
+}
+
+message CommandOutput {
+  StreamKind stream = 1;
+  string text = 2;
+}
+
+enum StreamKind {
+  STREAM_KIND_UNSPECIFIED = 0;
+  STREAM_KIND_STDOUT = 1;
+  STREAM_KIND_STDERR = 2;
+}
+
+message ExecEvent {
+  EventType type = 1;
+  string thread_id = 2;
+  TurnUsage usage = 3;
+  ItemEvent item = 4;
+  ErrorEvent error = 5;
+  string message = 6;
+  bytes raw = 7;
+}
+
+message TurnUsage {
+  int32 input_tokens = 1;
+  int32 cached_input_tokens = 2;
+  int32 output_tokens = 3;
+}
+
+message ItemEvent {
+  string id = 1;
+  ItemType type = 2;
+  string text = 3;
+  string command = 4;
+  string aggregated_output = 5;
+  optional int32 exit_code = 6;
+  string status = 7;
+  repeated FileChange changes = 8;
+  string query = 9;
+  repeated TodoItem items = 10;
+  bytes raw = 11;
+}
+
+message FileChange {
+  string path = 1;
+  string kind = 2;
+}
+
+message TodoItem {
+  string text = 1;
+  bool completed = 2;
+}
+
+message ErrorEvent {
+  string message = 1;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_THREAD_STARTED = 1;
+  EVENT_TURN_STARTED = 2;
+  EVENT_TURN_COMPLETED = 3;
+  EVENT_TURN_FAILED = 4;
+  EVENT_ITEM_STARTED = 5;
+  EVENT_ITEM_UPDATED = 6;
+  EVENT_ITEM_COMPLETED = 7;
+  EVENT_ERROR = 8;
+}
+
+enum ItemType {
+  ITEM_TYPE_UNSPECIFIED = 0;
+  ITEM_AGENT_MESSAGE = 1;
+  ITEM_REASONING = 2;
+  ITEM_COMMAND_EXECUTION = 3;
+  ITEM_FILE_CHANGE = 4;
+  ITEM_MCP_TOOL_CALL = 5;
+  ITEM_WEB_SEARCH = 6;
+  ITEM_TODO_LIST = 7;
+  ITEM_ERROR = 8;
+}

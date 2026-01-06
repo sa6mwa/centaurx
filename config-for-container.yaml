@@ -1,0 +1,58 @@
+config_version: 4
+repo_root: /cx/repos
+state_dir: /cx/state
+models:
+    default: gpt-5.2-codex
+    allowed:
+        - gpt-5.2-codex
+        - gpt-5.1-codex-max
+        - gpt-5.1-codex-mini
+service:
+    buffer_max_lines: 5000
+runner:
+    runtime: podman
+    image: docker.io/pktsystems/centaurxrunner:latest
+    sock_dir: /cx/state/runner
+    repo_root: /cx/repos
+    host_repo_root: /home/mike/.centaurx/repos
+    host_state_dir: /home/mike/.centaurx/state
+    socket_path: /cx/state/runner.sock
+    binary: codex
+    args: []
+    env: {}
+    git_ssh_debug: false
+    idle_timeout_hours: 8
+    keepalive_interval_seconds: 10
+    keepalive_misses: 3
+    podman:
+        address: unix:///cx/podman.sock
+        userns_mode: keep-id
+    containerd:
+        address: unix:///run/user/1000/containerd/containerd.sock
+        namespace: centaurx
+    buildkit:
+        address: ""
+    build_timeout_minutes: 20
+    pull_timeout_minutes: 5
+http:
+    addr: :27480
+    session_cookie: centaurx_session
+    session_ttl_hours: 720
+    base_url: ""
+    base_path: ""
+    initial_buffer_lines: 200
+    ui_max_buffer_lines: 2000
+ssh:
+    addr: :27422
+    host_key_path: /cx/state/ssh/host_key
+    key_store_path: /cx/state/ssh/keys.bundle
+    key_dir: /cx/state/ssh/keys
+    agent_dir: /cx/state/ssh/agent
+auth:
+    user_file: /cx/state/users.json
+    seed_users:
+        - username: admin
+          password_hash: $2a$12$PyjGUD8qnJie1MULQVHJdu9zuS/juh5W5RtDUVHv5HFb.62gNnY/q
+          totp_secret: JBSWY3DPEHPK3PXP
+logging:
+    disable_audit_trails: false
