@@ -348,20 +348,23 @@ func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Cli
 	}
 	hostHomePath := filepath.Join(p.hostHomeRoot, string(key.user))
 
-	hostSocketDir := filepath.Join(p.hostSockDir, string(key.user), string(key.tab))
-	if err := ensureDir(hostSocketDir, 0o700); err != nil {
-		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner socket dir %q: %w", hostSocketDir, err)
+	localSocketDir := filepath.Join(p.cfg.SockDir, string(key.user), string(key.tab))
+	if err := ensureDir(localSocketDir, 0o700); err != nil {
+		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner socket dir %q: %w", localSocketDir, err)
 	}
-	hostSocketPath := filepath.Join(hostSocketDir, "runner.sock")
-	_ = os.Remove(hostSocketPath)
+	localSocketPath := filepath.Join(localSocketDir, "runner.sock")
+	_ = os.Remove(localSocketPath)
+
+	hostSocketDir := filepath.Join(p.hostSockDir, string(key.user), string(key.tab))
 
 	containerSocketDir := path.Join(p.containerSockDir, string(key.user), string(key.tab))
 	containerSocketPath := path.Join(containerSocketDir, "runner.sock")
 
-	hostAgentDir := filepath.Join(p.hostAgentDir, string(key.user))
-	if err := ensureDir(hostAgentDir, 0o700); err != nil {
-		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner agent dir %q: %w", hostAgentDir, err)
+	localAgentDir := filepath.Join(p.cfg.SSHAgentDir, string(key.user))
+	if err := ensureDir(localAgentDir, 0o700); err != nil {
+		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner agent dir %q: %w", localAgentDir, err)
 	}
+	hostAgentDir := filepath.Join(p.hostAgentDir, string(key.user))
 	containerAgentDir := path.Join(p.containerAgentDir, string(key.user))
 	containerAgentSock := ""
 	if agentSock != "" {
@@ -426,16 +429,16 @@ func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Cli
 
 	waitCtx, cancel := context.WithTimeout(ctx, p.cfg.SocketWait)
 	defer cancel()
-	if err := waitForSocket(waitCtx, hostSocketPath, p.cfg.SocketRetryWait); err != nil {
+	if err := waitForSocket(waitCtx, localSocketPath, p.cfg.SocketRetryWait); err != nil {
 		log.Warn("runner socket wait failed", "err", err)
 		p.logContainerTail(context.Background(), log, handle, "socket wait failed")
 		_ = p.rt.Stop(context.Background(), handle)
 		_ = p.rt.Remove(context.Background(), handle)
-		return nil, core.RunnerInfo{}, nil, core.NewRunnerError(core.RunnerErrorContainerSocket, "socket wait", fmt.Errorf("runner socket not ready at %s: %w", hostSocketPath, err))
+		return nil, core.RunnerInfo{}, nil, core.NewRunnerError(core.RunnerErrorContainerSocket, "socket wait", fmt.Errorf("runner socket not ready at %s: %w", localSocketPath, err))
 	}
-	log.Info("runner socket ready", "socket", hostSocketPath)
+	log.Info("runner socket ready", "socket", localSocketPath)
 
-	client, err := runnergrpc.Dial(ctx, hostSocketPath)
+	client, err := runnergrpc.Dial(ctx, localSocketPath)
 	if err != nil {
 		log.Warn("runner grpc dial failed", "err", err)
 		p.logContainerTail(context.Background(), log, handle, "grpc dial failed")
