@@ -338,10 +338,11 @@ func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Cli
 		}
 	}
 
-	hostRepoRoot := filepath.Join(p.hostRepoRoot, string(key.user))
-	if err := ensureDir(hostRepoRoot, 0o755); err != nil {
-		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner repo root %q: %w", hostRepoRoot, err)
+	repoRoot := filepath.Join(p.cfg.RepoRoot, string(key.user))
+	if err := ensureDir(repoRoot, 0o755); err != nil {
+		return nil, core.RunnerInfo{}, nil, fmt.Errorf("runner repo root %q: %w", repoRoot, err)
 	}
+	hostRepoRoot := filepath.Join(p.hostRepoRoot, string(key.user))
 	if _, err := p.ensureHome(string(key.user)); err != nil {
 		return nil, core.RunnerInfo{}, nil, err
 	}
