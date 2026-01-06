@@ -54,13 +54,15 @@ type Paths struct {
 }
 
 const (
-	containerConfigName      = "config-for-container.yaml"
-	runnerInstallRel         = "files/cxrunner-install.sh"
-	composeEnvName           = ".env"
-	defaultServerImage       = "docker.io/pktsystems/centaurx"
-	defaultRunnerImage       = "docker.io/pktsystems/centaurxrunner"
-	defaultHostStateTemplate = "${HOME}/.centaurx/state"
-	defaultHostRepoTemplate  = "${HOME}/.centaurx/repos"
+	containerConfigName       = "config-for-container.yaml"
+	runnerInstallRel          = "files/cxrunner-install.sh"
+	composeEnvName            = ".env"
+	defaultServerImage        = "docker.io/pktsystems/centaurx"
+	defaultRunnerImage        = "docker.io/pktsystems/centaurxrunner"
+	defaultHostStateTemplate  = "${HOME}/.centaurx/state"
+	defaultHostRepoTemplate   = "${HOME}/.centaurx/repos"
+	defaultHostConfigTemplate = "${HOME}/.centaurx/config-for-container.yaml"
+	defaultPodmanSockTemplate = "/run/user/${UID}/podman/podman.sock"
 )
 
 type templateData struct {
@@ -112,6 +114,10 @@ func DefaultFiles() (Files, *Assets, error) {
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
 		RunnerInstallPath: runnerInstallRel,
+		HostConfigPath:    filepath.Join(filepath.Dir(hostCfg.StateDir), containerConfigName),
+		HostStateDir:      hostCfg.StateDir,
+		HostRepoDir:       hostCfg.RepoRoot,
+		HostPodmanSock:    defaultPodmanSockPath(),
 		ServerImage:       tagImage(defaultServerImage, tag),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
@@ -180,6 +186,10 @@ func DefaultRepoBundle() (Files, *Assets, error) {
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
 		RunnerInstallPath: runnerInstallRel,
+		HostConfigPath:    defaultHostConfigTemplate,
+		HostStateDir:      defaultHostStateTemplate,
+		HostRepoDir:       defaultHostRepoTemplate,
+		HostPodmanSock:    defaultPodmanSockTemplate,
 		ServerImage:       tagImage(defaultServerImage, tag),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
@@ -370,6 +380,10 @@ func WriteBootstrap(outputDir string, overwrite bool, imageTag string) (Paths, e
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
 		RunnerInstallPath: runnerInstallRel,
+		HostConfigPath:    filepath.Join(rootDir, containerConfigName),
+		HostStateDir:      hostStateDir,
+		HostRepoDir:       hostRepoDir,
+		HostPodmanSock:    defaultPodmanSockPath(),
 		ServerImage:       tagImage(defaultServerImage, tag),
 	}
 	if bundle.ComposeYAML, err = renderComposeYAML(tplData); err != nil {

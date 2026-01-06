@@ -17,8 +17,8 @@ services:
       - "27480:27480"
       - "27422:27422"
     volumes:
-      - ./state:/cx/state
-      - ./repos:/cx/repos
-      - ./config-for-container.yaml:/cx/config-for-container.yaml:ro
-      - /run/user/${UID}/podman/podman.sock:/cx/podman.sock:ro
+      - {{ .HostStateDir }}:/cx/state
+      - {{ .HostRepoDir }}:/cx/repos
+      - {{ .HostConfigPath }}:/cx/config-for-container.yaml:ro
+      - {{ .HostPodmanSock }}:/cx/podman.sock:ro
     command: ["serve", "-c", "/cx/config-for-container.yaml"]
