@@ -13,6 +13,7 @@ import (
 func newBootstrapCmd() *cobra.Command {
 	var outputDir string
 	var overwrite bool
+	var imageTag string
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Generate default config and container files",
@@ -26,7 +27,7 @@ func newBootstrapCmd() *cobra.Command {
 				}
 				out = filepath.Join(home, ".centaurx")
 			}
-			paths, err := bootstrap.WriteBootstrap(out, overwrite)
+			paths, err := bootstrap.WriteBootstrap(out, overwrite, imageTag)
 			if err != nil {
 				return err
 			}
@@ -47,5 +48,6 @@ func newBootstrapCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&outputDir, "output", "o", "", "output directory")
 	cmd.Flags().BoolVar(&overwrite, "force", false, "overwrite existing files")
+	cmd.Flags().StringVar(&imageTag, "image-tag", "", "image tag to use for generated images")
 	return cmd
 }

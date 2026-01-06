@@ -2,7 +2,7 @@ name: centaurx
 
 services:
   centaurx:
-    image: docker.io/pktsystems/centaurx:latest
+    image: docker.io/pktsystems/centaurx:v0.1.1-0.20260106135241-a905fb6f8068+dirty
     container_name: centaurx
     read_only: true
     environment:

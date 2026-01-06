@@ -5,7 +5,7 @@ metadata:
 spec:
   containers:
     - name: centaurx
-      image: docker.io/pktsystems/centaurx:latest
+      image: docker.io/pktsystems/centaurx:v0.1.1-0.20260106135241-a905fb6f8068+dirty
       args: ["serve", "-c", "/cx/config-for-container.yaml"]
       env:
         - name: HOME
@@ -43,19 +43,19 @@ spec:
   volumes:
     - name: centaurx-state
       hostPath:
-        path: state
+        path: 
         type: DirectoryOrCreate
     - name: centaurx-repos
       hostPath:
-        path: repos
+        path: 
         type: DirectoryOrCreate
     - name: centaurx-config
       hostPath:
-        path: config-for-container.yaml
+        path: 
         type: File
     - name: podman-sock
       hostPath:
-        path: /run/user/1000/podman/podman.sock
+        path: 
         type: Socket
     - name: tmp
       emptyDir:

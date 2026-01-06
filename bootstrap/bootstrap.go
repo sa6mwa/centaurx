@@ -15,6 +15,7 @@ import (
 	"pkt.systems/centaurx/internal/appconfig"
 	"pkt.systems/centaurx/internal/sshkeys"
 	"pkt.systems/centaurx/internal/userhome"
+	"pkt.systems/centaurx/internal/version"
 	"pkt.systems/centaurx/sshserver"
 )
 
@@ -53,9 +54,13 @@ type Paths struct {
 }
 
 const (
-	containerConfigName = "config-for-container.yaml"
-	runnerInstallRel    = "files/cxrunner-install.sh"
-	composeEnvName      = ".env"
+	containerConfigName      = "config-for-container.yaml"
+	runnerInstallRel         = "files/cxrunner-install.sh"
+	composeEnvName           = ".env"
+	defaultServerImage       = "docker.io/pktsystems/centaurx"
+	defaultRunnerImage       = "docker.io/pktsystems/centaurxrunner"
+	defaultHostStateTemplate = "${HOME}/.centaurx/state"
+	defaultHostRepoTemplate  = "${HOME}/.centaurx/repos"
 )
 
 type templateData struct {
@@ -65,6 +70,7 @@ type templateData struct {
 	HostStateDir      string
 	HostRepoDir       string
 	HostPodmanSock    string
+	ServerImage       string
 }
 
 // DefaultFiles returns container-oriented bootstrap files.
@@ -89,6 +95,8 @@ func DefaultFiles() (Files, *Assets, error) {
 	cfg.Runner.KeepaliveIntervalSeconds = 10
 	cfg.Runner.KeepaliveMisses = 3
 	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
+	tag := resolveImageTag("")
+	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
 	cfg.Runner.HostRepoRoot = hostCfg.RepoRoot
 	cfg.Runner.HostStateDir = hostCfg.StateDir
 	cfg.SSH.HostKeyPath = "/cx/state/ssh/host_key"
@@ -104,8 +112,13 @@ func DefaultFiles() (Files, *Assets, error) {
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
 		RunnerInstallPath: runnerInstallRel,
+		ServerImage:       tagImage(defaultServerImage, tag),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
+	if err != nil {
+		return Files{}, nil, err
+	}
+	podmanYAML, err := renderPodmanYAML(tplData)
 	if err != nil {
 		return Files{}, nil, err
 	}
@@ -125,6 +138,7 @@ func DefaultFiles() (Files, *Assets, error) {
 	files := Files{
 		ConfigYAML:            configYAML,
 		ComposeYAML:           composeYAML,
+		PodmanYAML:            podmanYAML,
 		CentaurxContainerfile: centaurxFile,
 		RunnerContainerfile:   runnerFile,
 	}
@@ -133,10 +147,6 @@ func DefaultFiles() (Files, *Assets, error) {
 
 // DefaultRepoBundle returns container files intended for repo codegen (no embedded assets).
 func DefaultRepoBundle() (Files, *Assets, error) {
-	hostCfg, err := appconfig.DefaultConfig()
-	if err != nil {
-		return Files{}, nil, err
-	}
 	cfg, err := appconfig.DefaultConfig()
 	if err != nil {
 		return Files{}, nil, err
@@ -153,8 +163,10 @@ func DefaultRepoBundle() (Files, *Assets, error) {
 	cfg.Runner.KeepaliveIntervalSeconds = 10
 	cfg.Runner.KeepaliveMisses = 3
 	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
-	cfg.Runner.HostRepoRoot = hostCfg.RepoRoot
-	cfg.Runner.HostStateDir = hostCfg.StateDir
+	tag := resolveImageTag("")
+	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	cfg.Runner.HostRepoRoot = defaultHostRepoTemplate
+	cfg.Runner.HostStateDir = defaultHostStateTemplate
 	cfg.SSH.HostKeyPath = "/cx/state/ssh/host_key"
 	cfg.SSH.KeyStorePath = "/cx/state/ssh/keys.bundle"
 	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
@@ -168,8 +180,13 @@ func DefaultRepoBundle() (Files, *Assets, error) {
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
 		RunnerInstallPath: runnerInstallRel,
+		ServerImage:       tagImage(defaultServerImage, tag),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
+	if err != nil {
+		return Files{}, nil, err
+	}
+	podmanYAML, err := renderPodmanYAML(tplData)
 	if err != nil {
 		return Files{}, nil, err
 	}
@@ -184,6 +201,7 @@ func DefaultRepoBundle() (Files, *Assets, error) {
 	return Files{
 		ConfigYAML:            configYAML,
 		ComposeYAML:           composeYAML,
+		PodmanYAML:            podmanYAML,
 		CentaurxContainerfile: centaurxFile,
 		RunnerContainerfile:   runnerFile,
 	}, nil, nil
@@ -208,6 +226,7 @@ func DefaultHostConfig() (appconfig.Config, error) {
 	cfg.Runner.RepoRoot = "/repos"
 	cfg.Runner.HostRepoRoot = cfg.RepoRoot
 	cfg.Runner.HostStateDir = cfg.StateDir
+	cfg.Runner.Image = tagImage(defaultRunnerImage, resolveImageTag(""))
 	return cfg, nil
 }
 
@@ -275,6 +294,7 @@ func WriteFilesWithAssets(outputDir string, files Files, assets *Assets, overwri
 			HostStateDir:   stateDir,
 			HostRepoDir:    repoDir,
 			HostPodmanSock: defaultPodmanSockPath(),
+			ServerImage:    tagImage(defaultServerImage, resolveImageTag("")),
 		})
 		if err != nil {
 			return BundlePaths{}, err
@@ -318,11 +338,13 @@ func WriteFilesWithAssets(outputDir string, files Files, assets *Assets, overwri
 }
 
 // WriteBootstrap writes host config plus container bundle outputs.
-func WriteBootstrap(outputDir string, overwrite bool) (Paths, error) {
+func WriteBootstrap(outputDir string, overwrite bool, imageTag string) (Paths, error) {
 	hostCfg, err := DefaultHostConfig()
 	if err != nil {
 		return Paths{}, err
 	}
+	tag := resolveImageTag(imageTag)
+	hostCfg.Runner.Image = tagImage(defaultRunnerImage, tag)
 	hostPath, err := appconfig.DefaultConfigPath()
 	if err != nil {
 		return Paths{}, err
@@ -334,6 +356,26 @@ func WriteBootstrap(outputDir string, overwrite bool) (Paths, error) {
 	}
 	bundle, assets, err := DefaultFiles()
 	if err != nil {
+		return Paths{}, err
+	}
+	rootDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		rootDir = outputDir
+	}
+	hostStateDir := filepath.Join(rootDir, "state")
+	hostRepoDir := filepath.Join(rootDir, "repos")
+	if bundle.ConfigYAML, err = overrideContainerConfig(bundle.ConfigYAML, hostStateDir, hostRepoDir, tag); err != nil {
+		return Paths{}, err
+	}
+	tplData := templateData{
+		ConfigFile:        containerConfigName,
+		RunnerInstallPath: runnerInstallRel,
+		ServerImage:       tagImage(defaultServerImage, tag),
+	}
+	if bundle.ComposeYAML, err = renderComposeYAML(tplData); err != nil {
+		return Paths{}, err
+	}
+	if bundle.PodmanYAML, err = renderPodmanYAML(tplData); err != nil {
 		return Paths{}, err
 	}
 	paths, err := WriteFilesWithAssets(outputDir, bundle, assets, overwrite)
@@ -504,4 +546,62 @@ func renderTemplate(name string, data templateData) ([]byte, error) {
 		return nil, fmt.Errorf("render template %s: %w", name, err)
 	}
 	return buf.Bytes(), nil
+}
+
+func overrideContainerConfig(configYAML []byte, hostStateDir, hostRepoDir, tag string) ([]byte, error) {
+	if len(bytes.TrimSpace(configYAML)) == 0 {
+		return configYAML, nil
+	}
+	var cfg appconfig.Config
+	if err := yaml.Unmarshal(configYAML, &cfg); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(hostStateDir) != "" {
+		cfg.Runner.HostStateDir = hostStateDir
+	}
+	if strings.TrimSpace(hostRepoDir) != "" {
+		cfg.Runner.HostRepoRoot = hostRepoDir
+	}
+	if strings.TrimSpace(tag) != "" {
+		cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	}
+	return yaml.Marshal(cfg)
+}
+
+func resolveImageTag(override string) string {
+	if value := strings.TrimSpace(override); value != "" {
+		return value
+	}
+	value := strings.TrimSpace(version.Current())
+	if value == "" {
+		return "v0.0.0-unknown"
+	}
+	return value
+}
+
+func tagImage(base, tag string) string {
+	base = stripImageTag(base)
+	if base == "" {
+		return ""
+	}
+	if strings.TrimSpace(tag) == "" {
+		tag = "v0.0.0-unknown"
+	}
+	return base + ":" + tag
+}
+
+func stripImageTag(image string) string {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return ""
+	}
+	if at := strings.LastIndex(image, "@"); at != -1 {
+		image = image[:at]
+	}
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon > lastSlash {
+		return image[:lastColon]
+	}
+	return image
 }
