@@ -143,13 +143,12 @@ func TestRunnerUsesContainerAgentSock(t *testing.T) {
 	tab := schema.TabID("tab1")
 
 	containerSockDir := filepath.Join(containerStateDir, "runner")
-	hostSockDir := resolveHostPath(hostStateDir, containerStateDir, containerSockDir)
-	hostSocketPath := filepath.Join(hostSockDir, string(user), string(tab), "runner.sock")
-	if err := os.MkdirAll(filepath.Dir(hostSocketPath), 0o700); err != nil {
+	localSocketPath := filepath.Join(containerSockDir, string(user), string(tab), "runner.sock")
+	if err := os.MkdirAll(filepath.Dir(localSocketPath), 0o700); err != nil {
 		t.Fatalf("socket dir: %v", err)
 	}
 
-	runtime := &captureRuntime{socketPath: hostSocketPath}
+	runtime := &captureRuntime{socketPath: localSocketPath}
 	containerAgentDir := filepath.Join(containerStateDir, "ssh", "agent")
 	repoRoot := filepath.Join(temp, "repos")
 	provider, err := NewProvider(context.Background(), Config{

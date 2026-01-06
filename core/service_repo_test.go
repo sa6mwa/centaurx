@@ -101,3 +101,28 @@ func TestServiceRejectsInvalidUserID(t *testing.T) {
 		t.Fatalf("expected invalid user error")
 	}
 }
+
+func TestListReposUsesComputedPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	stateDir := t.TempDir()
+	resolver := fakeRepoResolver{repo: schema.RepoRef{Name: "demo", Path: "/wrong/path"}}
+	svc, err := NewService(schema.ServiceConfig{
+		RepoRoot: repoRoot,
+		StateDir: stateDir,
+	}, ServiceDeps{RepoResolver: resolver})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	user := schema.UserID("alice")
+	resp, err := svc.ListRepos(context.Background(), schema.ListReposRequest{UserID: user})
+	if err != nil {
+		t.Fatalf("list repos: %v", err)
+	}
+	if len(resp.Repos) != 1 {
+		t.Fatalf("expected 1 repo, got %d", len(resp.Repos))
+	}
+	want := filepath.Join(repoRoot, "alice", "demo")
+	if resp.Repos[0].Path != want {
+		t.Fatalf("expected computed path %q, got %q", want, resp.Repos[0].Path)
+	}
+}

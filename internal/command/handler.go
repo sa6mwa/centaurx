@@ -748,7 +748,7 @@ func (h *Handler) handleShell(ctx context.Context, userID schema.UserID, tabID s
 		tab = loaded
 		sessionLog := logx.WithSession(baseLog, tab.SessionID)
 		ctx = logx.ContextWithUserTabLogger(ctx, sessionLog, userID, displayTabID)
-		log = logx.WithRepo(sessionLog, tab.Repo).With("command_len", len(cmdText))
+		log = logx.WithRepo(sessionLog, core.RepoRefForUser(h.cfg.RepoRoot, userID, tab.Repo.Name)).With("command_len", len(cmdText))
 	}
 	runCtx, runCancel := detachCommandContext(ctx)
 	runnerResp, err := h.runners.RunnerFor(runCtx, core.RunnerRequest{UserID: userID, TabID: runnerTabID})
@@ -764,9 +764,14 @@ func (h *Handler) handleShell(ctx context.Context, userID schema.UserID, tabID s
 	info := runnerResp.Info
 	workingDir := info.HomeDir
 	if displayTabID != "" {
-		workingDir = tab.Repo.Path
+		workingDir, err = core.RepoPath(h.cfg.RepoRoot, userID, tab.Repo.Name)
+		if err != nil {
+			log.Warn("command shell repo path failed", "err", err)
+			h.appendError(ctx, userID, displayTabID, err)
+			return err
+		}
 		if info.RepoRoot != "" && h.cfg.RepoRoot != "" {
-			mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, tab.Repo.Path)
+			mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, workingDir)
 			if err != nil {
 				log.Warn("command shell repo map failed", "err", err)
 				h.appendError(ctx, userID, displayTabID, err)
@@ -871,7 +876,7 @@ func (h *Handler) handleGit(ctx context.Context, userID schema.UserID, tabID sch
 	}
 	sessionLog := logx.WithSession(baseLog, tab.SessionID)
 	ctx = logx.ContextWithUserTabLogger(ctx, sessionLog, userID, tabID)
-	log = logx.WithRepo(sessionLog, tab.Repo).With("subcommand", sub)
+	log = logx.WithRepo(sessionLog, core.RepoRefForUser(h.cfg.RepoRoot, userID, tab.Repo.Name)).With("subcommand", sub)
 
 	message := remainderAfterTokens(cmd.Raw, 2)
 
@@ -894,9 +899,14 @@ func (h *Handler) handleGit(ctx context.Context, userID schema.UserID, tabID sch
 	}
 	runner := runnerResp.Runner
 	info := runnerResp.Info
-	workingDir := tab.Repo.Path
+	workingDir, err := core.RepoPath(h.cfg.RepoRoot, userID, tab.Repo.Name)
+	if err != nil {
+		log.Warn("command git repo path failed", "err", err)
+		h.appendError(ctx, userID, tabID, err)
+		return err
+	}
 	if info.RepoRoot != "" && h.cfg.RepoRoot != "" {
-		mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, tab.Repo.Path)
+		mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, workingDir)
 		if err != nil {
 			log.Warn("command git repo map failed", "err", err)
 			h.appendError(ctx, userID, tabID, err)
@@ -967,16 +977,20 @@ func (h *Handler) generateCommitMessage(ctx context.Context, userID schema.UserI
 	runner := runnerResp.Runner
 	info := runnerResp.Info
 	prompt := "Give me a commit message according to conventionalcommits for the uncommitted changes in this repo, answer only with a single line."
-	workingDir := tab.Repo.Path
+	workingDir, err := core.RepoPath(h.cfg.RepoRoot, userID, tab.Repo.Name)
+	if err != nil {
+		log.Warn("command git message repo path failed", "err", err)
+		return "", err
+	}
 	if info.RepoRoot != "" && h.cfg.RepoRoot != "" {
-		mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, tab.Repo.Path)
+		mapped, err := core.MapRepoPath(h.cfg.RepoRoot, info.RepoRoot, workingDir)
 		if err != nil {
 			log.Warn("command git message repo map failed", "err", err)
 			return "", err
 		}
 		workingDir = mapped
 	}
-	log = logx.WithRepo(log, tab.Repo)
+	log = logx.WithRepo(log, core.RepoRefForUser(h.cfg.RepoRoot, userID, tab.Repo.Name))
 	log = logx.WithSession(log, tab.SessionID)
 	ctx = logx.ContextWithUserTabLogger(ctx, log, userID, tab.ID)
 	if !h.cfg.DisableAuditLogging {
@@ -1182,18 +1196,20 @@ func (h *Handler) storeUsage(userID schema.UserID, info core.UsageInfo, err erro
 func (h *Handler) resolveStatusDir(ctx context.Context, userID schema.UserID, tabID schema.TabID, tab schema.TabSnapshot) string {
 	if h.runners != nil {
 		if resp, err := h.runners.RunnerFor(ctx, core.RunnerRequest{UserID: userID, TabID: tabID}); err == nil {
-			if strings.TrimSpace(h.cfg.RepoRoot) != "" && strings.TrimSpace(resp.Info.RepoRoot) != "" && strings.TrimSpace(tab.Repo.Path) != "" {
-				if mapped, err := core.MapRepoPath(h.cfg.RepoRoot, resp.Info.RepoRoot, tab.Repo.Path); err == nil {
-					return mapped
+			if strings.TrimSpace(h.cfg.RepoRoot) != "" && strings.TrimSpace(resp.Info.RepoRoot) != "" {
+				if repoPath, err := core.RepoPath(h.cfg.RepoRoot, userID, tab.Repo.Name); err == nil {
+					if mapped, err := core.MapRepoPath(h.cfg.RepoRoot, resp.Info.RepoRoot, repoPath); err == nil {
+						return mapped
+					}
 				}
 			}
 		}
 	}
+	if repoPath, err := core.RepoPath(h.cfg.RepoRoot, userID, tab.Repo.Name); err == nil {
+		return repoPath
+	}
 	if strings.TrimSpace(string(tab.Repo.Name)) != "" {
 		return string(tab.Repo.Name)
-	}
-	if strings.TrimSpace(tab.Repo.Path) != "" {
-		return tab.Repo.Path
 	}
 	return "unknown"
 }

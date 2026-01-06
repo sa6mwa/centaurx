@@ -109,7 +109,7 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 
 	tabID := schema.TabID(newID())
 
-	var repoRef schema.RepoRef
+	var repoName schema.RepoName
 	repoCreated := false
 	if strings.TrimSpace(req.RepoURL) != "" {
 		repoResp, err := s.repos.OpenOrCloneURL(ctx, OpenOrCloneRequest{UserID: userID, TabID: tabID, URL: req.RepoURL})
@@ -120,7 +120,7 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 			}
 			return schema.CreateTabResponse{}, err
 		}
-		repoRef = repoResp.Repo
+		repoName = repoResp.Repo.Name
 		repoCreated = repoResp.Created
 	} else if req.CreateRepo {
 		repoResp, err := s.repos.CreateRepo(ctx, CreateRepoRequest{UserID: userID, TabID: tabID, Name: req.RepoName})
@@ -131,7 +131,7 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 			}
 			return schema.CreateTabResponse{}, err
 		}
-		repoRef = repoResp.Repo
+		repoName = repoResp.Repo.Name
 		repoCreated = true
 	} else {
 		repoResp, err := s.repos.ResolveRepo(ctx, ResolveRepoRequest{UserID: userID, Name: req.RepoName})
@@ -142,18 +142,18 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 			}
 			return schema.CreateTabResponse{}, err
 		}
-		repoRef = repoResp.Repo
+		repoName = repoResp.Repo.Name
 	}
 	tabName := req.TabName
 	if strings.TrimSpace(string(tabName)) == "" {
-		tabName = schema.TabName(repoRef.Name)
+		tabName = schema.TabName(repoName)
 	}
 	tabName = schema.TabName(formatTabName(string(tabName), s.cfg.TabNameMax, s.cfg.TabNameSuffix))
 
 	tab := &tab{
 		ID:      tabID,
 		Name:    tabName,
-		Repo:    repoRef,
+		Repo:    schema.RepoRef{Name: repoName},
 		Model:   s.cfg.DefaultModel,
 		Status:  schema.TabStatusIdle,
 		buffer:  newBufferWithMaxLines(s.cfg.BufferMaxLines),
@@ -165,18 +165,19 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 	state.tabs[tab.ID] = tab
 	state.order = append(state.order, tab.ID)
 	active := activeTabFromContext(ctx, state)
+	snapshot := s.snapshotTab(userID, tab, active == tab.ID)
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventCreated,
-		Tab:       tab.Snapshot(active == tab.ID),
+		Tab:       snapshot,
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
 	s.emitTabEvent(event)
 	s.persistUser(log, userID)
-	logx.WithRepo(log.With("tab", tab.ID, "tab_name", tab.Name, "repo_created", repoCreated), repoRef).Info("service tab created")
+	logx.WithRepo(log.With("tab", tab.ID, "tab_name", tab.Name, "repo_created", repoCreated), snapshot.Repo).Info("service tab created")
 
-	return schema.CreateTabResponse{Tab: tab.Snapshot(active == tab.ID), RepoCreated: repoCreated}, nil
+	return schema.CreateTabResponse{Tab: snapshot, RepoCreated: repoCreated}, nil
 }
 
 func (s *service) CloseTab(ctx context.Context, req schema.CloseTabRequest) (schema.CloseTabResponse, error) {
@@ -213,10 +214,11 @@ func (s *service) CloseTab(ctx context.Context, req schema.CloseTabRequest) (sch
 		prefs.ActiveTab = ""
 	}
 	active := activeTabFromContext(ctx, state)
+	snapshot := s.snapshotTab(userID, tab, false)
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventClosed,
-		Tab:       tab.Snapshot(false),
+		Tab:       snapshot,
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
@@ -229,7 +231,7 @@ func (s *service) CloseTab(ctx context.Context, req schema.CloseTabRequest) (sch
 		go s.stopTabHandles(log, userID, req.TabID, handle, runCancel, commands)
 	}
 	log.Info("service tab closed")
-	return schema.CloseTabResponse{Tab: tab.Snapshot(false)}, nil
+	return schema.CloseTabResponse{Tab: snapshot}, nil
 }
 
 func (s *service) ListTabs(ctx context.Context, req schema.ListTabsRequest) (schema.ListTabsResponse, error) {
@@ -250,7 +252,7 @@ func (s *service) ListTabs(ctx context.Context, req schema.ListTabsRequest) (sch
 		if tab == nil {
 			continue
 		}
-		tabs = append(tabs, tab.Snapshot(id == active))
+		tabs = append(tabs, s.snapshotTab(userID, tab, id == active))
 	}
 
 	var activeRepo schema.RepoRef
@@ -289,17 +291,18 @@ func (s *service) ActivateTab(ctx context.Context, req schema.ActivateTabRequest
 		prefs.ActiveTab = req.TabID
 	}
 	active := activeTabFromContext(ctx, state)
+	snapshot := s.snapshotTab(userID, tab, active == tab.ID)
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventActivated,
-		Tab:       tab.Snapshot(active == tab.ID),
+		Tab:       snapshot,
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
 	s.emitTabEvent(event)
 	s.persistUser(log, userID)
 	log.Info("service tab activated")
-	return schema.ActivateTabResponse{Tab: tab.Snapshot(active == tab.ID)}, nil
+	return schema.ActivateTabResponse{Tab: snapshot}, nil
 }
 
 func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) (schema.SendPromptResponse, error) {
@@ -336,7 +339,8 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 	}
 	sessionLog := logx.WithSession(baseLog, tab.SessionID)
 	ctx = logx.ContextWithUserTabLogger(ctx, sessionLog, userID, req.TabID)
-	log = logx.WithRepo(sessionLog, tab.Repo).With("model", tab.Model, "prompt_len", len(req.Prompt))
+	repoRef := s.repoRef(userID, tab.Repo.Name)
+	log = logx.WithRepo(sessionLog, repoRef).With("model", tab.Model, "prompt_len", len(req.Prompt))
 	log.Info("service prompt start")
 	s.appendLine(log, userID, tab.ID, fmt.Sprintf("> %s", req.Prompt))
 
@@ -354,9 +358,17 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 	}
 	runner := runnerResp.Runner
 	info := runnerResp.Info
-	workingDir := tab.Repo.Path
+	workingDir, err := s.repoPath(userID, tab.Repo.Name)
+	if err != nil {
+		log.Error("service repo path failed", "err", err)
+		s.appendErrorLine(log, userID, tab.ID, err)
+		if runCancel != nil {
+			runCancel()
+		}
+		return schema.SendPromptResponse{}, err
+	}
 	if info.RepoRoot != "" {
-		mapped, err := MapRepoPath(s.repoRoot, info.RepoRoot, tab.Repo.Path)
+		mapped, err := MapRepoPath(s.repoRoot, info.RepoRoot, workingDir)
 		if err != nil {
 			log.Error("service repo map failed", "err", err)
 			s.appendErrorLine(log, userID, tab.ID, err)
@@ -372,7 +384,7 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 		if tab.SessionID != "" {
 			command = fmt.Sprintf("codex exec resume %s --json", tab.SessionID)
 		}
-		auditLog := logx.WithRepo(sessionLog, tab.Repo).With("model", tab.Model)
+		auditLog := logx.WithRepo(sessionLog, repoRef).With("model", tab.Model)
 		auditLog.Debug("audit command", "command_type", "codex", "command", command, "workdir", workingDir)
 	}
 	startLines := buildExecStartLines(time.Now(), tab, collectGitSummary(runCtx, runner, workingDir, info.SSHAuthSock))
@@ -403,7 +415,7 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventStatus,
-		Tab:       tab.Snapshot(tab.ID == active),
+		Tab:       s.snapshotTab(userID, tab, tab.ID == active),
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
@@ -411,7 +423,7 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 	log.Info("service runner started", "workdir", workingDir)
 
 	go s.consumeEvents(runCtx, userID, tab.ID, handle, runCancel, started)
-	return schema.SendPromptResponse{Tab: tab.Snapshot(tab.ID == active), Accepted: true}, nil
+	return schema.SendPromptResponse{Tab: s.snapshotTab(userID, tab, tab.ID == active), Accepted: true}, nil
 }
 
 func (s *service) SetModel(ctx context.Context, req schema.SetModelRequest) (schema.SetModelResponse, error) {
@@ -439,14 +451,14 @@ func (s *service) SetModel(ctx context.Context, req schema.SetModelRequest) (sch
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventUpdated,
-		Tab:       tab.Snapshot(req.TabID == active),
+		Tab:       s.snapshotTab(userID, tab, req.TabID == active),
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
 	s.emitTabEvent(event)
 	s.persistUser(log, userID)
 	log.Info("service model updated", "model", normalizedModel)
-	return schema.SetModelResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+	return schema.SetModelResponse{Tab: s.snapshotTab(userID, tab, req.TabID == active)}, nil
 }
 
 func (s *service) SwitchRepo(ctx context.Context, req schema.SwitchRepoRequest) (schema.SwitchRepoResponse, error) {
@@ -460,7 +472,7 @@ func (s *service) SwitchRepo(ctx context.Context, req schema.SwitchRepoRequest) 
 		log.Warn("service repo switch failed", "err", err, "repo_name", req.RepoName)
 		return schema.SwitchRepoResponse{}, err
 	}
-	repoRef := repoResp.Repo
+	repoName := repoResp.Repo.Name
 
 	s.mu.Lock()
 	state := s.getOrCreateUserStateLocked(userID)
@@ -470,19 +482,20 @@ func (s *service) SwitchRepo(ctx context.Context, req schema.SwitchRepoRequest) 
 		log.Warn("service repo switch failed", "err", schema.ErrTabNotFound)
 		return schema.SwitchRepoResponse{}, schema.ErrTabNotFound
 	}
-	tab.Repo = repoRef
+	tab.Repo = schema.RepoRef{Name: repoName}
 	active := activeTabFromContext(ctx, state)
+	snapshot := s.snapshotTab(userID, tab, req.TabID == active)
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventUpdated,
-		Tab:       tab.Snapshot(req.TabID == active),
+		Tab:       snapshot,
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
 	s.emitTabEvent(event)
 	s.persistUser(log, userID)
-	logx.WithRepo(log, repoRef).Info("service repo switched")
-	return schema.SwitchRepoResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+	logx.WithRepo(log, snapshot.Repo).Info("service repo switched")
+	return schema.SwitchRepoResponse{Tab: snapshot}, nil
 }
 
 func (s *service) ListRepos(ctx context.Context, req schema.ListReposRequest) (schema.ListReposResponse, error) {
@@ -496,8 +509,12 @@ func (s *service) ListRepos(ctx context.Context, req schema.ListReposRequest) (s
 		log.Warn("service repos list failed", "err", err)
 		return schema.ListReposResponse{}, err
 	}
-	log.Debug("service repos listed", "count", len(listResp.Repos))
-	return schema.ListReposResponse{Repos: listResp.Repos}, nil
+	repos := make([]schema.RepoRef, 0, len(listResp.Repos))
+	for _, repo := range listResp.Repos {
+		repos = append(repos, s.repoRef(userID, repo.Name))
+	}
+	log.Debug("service repos listed", "count", len(repos))
+	return schema.ListReposResponse{Repos: repos}, nil
 }
 
 func (s *service) StopSession(ctx context.Context, req schema.StopSessionRequest) (schema.StopSessionResponse, error) {
@@ -534,14 +551,14 @@ func (s *service) StopSession(ctx context.Context, req schema.StopSessionRequest
 	if handle == nil && len(commands) == 0 {
 		log.Info("service stop ignored", "reason", "no running process")
 		s.appendLine(log, userID, req.TabID, "stop requested: no running process")
-		return schema.StopSessionResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+		return schema.StopSessionResponse{Tab: s.snapshotTab(userID, tab, req.TabID == active)}, nil
 	}
 
 	log.Info("service stop requested")
 	s.appendLine(log, userID, req.TabID, "stop requested: sending SIGTERM")
 	go s.stopTabHandlesAsync(log, userID, req.TabID, handle, tab.RunCancel, commands)
 
-	return schema.StopSessionResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+	return schema.StopSessionResponse{Tab: s.snapshotTab(userID, tab, req.TabID == active)}, nil
 }
 
 func (s *service) stopTabHandles(log pslog.Logger, userID schema.UserID, tabID schema.TabID, handle RunHandle, runCancel context.CancelFunc, commands []commandRun) {
@@ -731,7 +748,7 @@ func (s *service) RenewSession(ctx context.Context, req schema.RenewSessionReque
 	event := schema.TabEvent{
 		UserID:    userID,
 		Type:      schema.TabEventUpdated,
-		Tab:       tab.Snapshot(req.TabID == active),
+		Tab:       s.snapshotTab(userID, tab, req.TabID == active),
 		ActiveTab: active,
 	}
 	s.mu.Unlock()
@@ -739,7 +756,7 @@ func (s *service) RenewSession(ctx context.Context, req schema.RenewSessionReque
 	s.emitTabEvent(event)
 	s.persistUser(log, userID)
 	log.Info("service session renewed")
-	return schema.RenewSessionResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+	return schema.RenewSessionResponse{Tab: s.snapshotTab(userID, tab, req.TabID == active)}, nil
 }
 
 func (s *service) SetTheme(ctx context.Context, req schema.SetThemeRequest) (schema.SetThemeResponse, error) {
@@ -760,7 +777,7 @@ func (s *service) SetTheme(ctx context.Context, req schema.SetThemeRequest) (sch
 	active = activeTabFromContext(ctx, state)
 	if active != "" {
 		if tab := state.tabs[active]; tab != nil {
-			tabSnapshot = tab.Snapshot(true)
+			tabSnapshot = s.snapshotTab(userID, tab, true)
 		}
 	}
 	s.mu.Unlock()
@@ -846,7 +863,7 @@ func (s *service) AppendOutput(ctx context.Context, req schema.AppendOutputReque
 	s.emitOutput(userID, req.TabID, req.Lines)
 	s.persistUser(log, userID)
 	log.Trace("service output appended", "lines", len(req.Lines))
-	return schema.AppendOutputResponse{Tab: tab.Snapshot(req.TabID == active)}, nil
+	return schema.AppendOutputResponse{Tab: s.snapshotTab(userID, tab, req.TabID == active)}, nil
 }
 
 func (s *service) AppendSystemOutput(ctx context.Context, req schema.AppendSystemOutputRequest) (schema.AppendSystemOutputResponse, error) {
@@ -1208,7 +1225,7 @@ func (s *service) consumeEvents(ctx context.Context, userID schema.UserID, tabID
 			tabEvent := schema.TabEvent{
 				UserID:    userID,
 				Type:      schema.TabEventStatus,
-				Tab:       tab.Snapshot(tabID == active),
+				Tab:       s.snapshotTab(userID, tab, tabID == active),
 				ActiveTab: active,
 			}
 			event = &tabEvent
@@ -1465,10 +1482,11 @@ func (s *service) loadUserStateLocked(userID schema.UserID) *userState {
 		theme:  snapshot.Theme,
 	}
 	for _, snap := range snapshot.Tabs {
+		repoName := snap.Repo.Name
 		loaded.tabs[snap.ID] = &tab{
 			ID:        snap.ID,
 			Name:      snap.Name,
-			Repo:      snap.Repo,
+			Repo:      schema.RepoRef{Name: repoName},
 			Model:     snap.Model,
 			SessionID: snap.SessionID,
 			Status:    schema.TabStatusIdle,
@@ -1538,7 +1556,7 @@ func (s *service) snapshotUser(userID schema.UserID) (persist.UserSnapshot, bool
 		tabs = append(tabs, persist.TabSnapshot{
 			ID:        tab.ID,
 			Name:      tab.Name,
-			Repo:      tab.Repo,
+			Repo:      schema.RepoRef{Name: tab.Repo.Name},
 			Model:     tab.Model,
 			SessionID: tab.SessionID,
 			Buffer: persist.BufferSnapshot{
@@ -1562,6 +1580,22 @@ func (s *service) snapshotUser(userID schema.UserID) (persist.UserSnapshot, bool
 		},
 		Theme: userState.theme,
 	}, true
+}
+
+func (s *service) repoPath(userID schema.UserID, repoName schema.RepoName) (string, error) {
+	return RepoPath(s.repoRoot, userID, repoName)
+}
+
+func (s *service) repoRef(userID schema.UserID, repoName schema.RepoName) schema.RepoRef {
+	return RepoRefForUser(s.repoRoot, userID, repoName)
+}
+
+func (s *service) snapshotTab(userID schema.UserID, tab *tab, active bool) schema.TabSnapshot {
+	if tab == nil {
+		return schema.TabSnapshot{}
+	}
+	repo := s.repoRef(userID, tab.Repo.Name)
+	return tab.Snapshot(active, repo)
 }
 
 func activeTabFromContext(ctx context.Context, state *userState) schema.TabID {

@@ -24,13 +24,14 @@ func TestHandleShellAuditLog(t *testing.T) {
 
 	user := schema.UserID("alice")
 	tabID := schema.TabID("tab1")
-	repoPath := "/repos/demo"
+	repoRoot := "/repos"
+	repoPath := repoRoot + "/alice/demo"
 
 	svc := &fakeService{
 		listTabsFn: func(_ context.Context, req schema.ListTabsRequest) (schema.ListTabsResponse, error) {
 			return schema.ListTabsResponse{
 				Tabs: []schema.TabSnapshot{
-					{ID: tabID, Repo: schema.RepoRef{Name: "demo", Path: repoPath}},
+					{ID: tabID, Repo: schema.RepoRef{Name: "demo"}},
 				},
 			}, nil
 		},
@@ -39,7 +40,9 @@ func TestHandleShellAuditLog(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(svc, fakeRunnerProvider{resp: core.RunnerResponse{Runner: &fakeRunner{}}}, HandlerConfig{})
+	handler := NewHandler(svc, fakeRunnerProvider{resp: core.RunnerResponse{Runner: &fakeRunner{}}}, HandlerConfig{
+		RepoRoot: repoRoot,
+	})
 	handled, err := handler.Handle(ctx, user, tabID, "!echo hi")
 	if err != nil {
 		t.Fatalf("Handle: %v", err)

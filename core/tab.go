@@ -28,11 +28,11 @@ type commandRun struct {
 }
 
 // Snapshot returns a transport-friendly view of the tab.
-func (t *tab) Snapshot(active bool) schema.TabSnapshot {
+func (t *tab) Snapshot(active bool, repo schema.RepoRef) schema.TabSnapshot {
 	return schema.TabSnapshot{
 		ID:        t.ID,
 		Name:      t.Name,
-		Repo:      t.Repo,
+		Repo:      repo,
 		Model:     t.Model,
 		SessionID: t.SessionID,
 		Status:    t.Status,

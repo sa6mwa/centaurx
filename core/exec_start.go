@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -26,9 +25,6 @@ func buildExecStartLines(now time.Time, tab *tab, summary gitSummary) []string {
 	if tab != nil {
 		repoLabel = string(tab.Repo.Name)
 		session = string(tab.SessionID)
-	}
-	if strings.TrimSpace(repoLabel) == "" && tab != nil {
-		repoLabel = filepath.Base(tab.Repo.Path)
 	}
 	if strings.TrimSpace(repoLabel) == "" {
 		repoLabel = "(unknown)"

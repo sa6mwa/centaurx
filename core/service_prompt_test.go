@@ -962,6 +962,41 @@ func TestCommandExecutionDedupesCommandLineAcrossEvents(t *testing.T) {
 	}
 }
 
+func TestSendPromptUsesComputedRepoPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	stateDir := t.TempDir()
+	repo := schema.RepoRef{Name: "demo", Path: "/wrong/path"}
+	resolver := fakeRepoResolver{repo: repo}
+	runner := &captureRunRunner{}
+	svc, err := NewService(schema.ServiceConfig{RepoRoot: repoRoot, StateDir: stateDir}, ServiceDeps{
+		RunnerProvider: fakeRunnerProvider{runner: runner},
+		RepoResolver:   resolver,
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	user := schema.UserID("alice")
+	tabResp, err := svc.CreateTab(context.Background(), schema.CreateTabRequest{
+		UserID:     user,
+		RepoName:   repo.Name,
+		CreateRepo: false,
+	})
+	if err != nil {
+		t.Fatalf("create tab: %v", err)
+	}
+	if _, err := svc.SendPrompt(context.Background(), schema.SendPromptRequest{
+		UserID: user,
+		TabID:  tabResp.Tab.ID,
+		Prompt: "hello",
+	}); err != nil {
+		t.Fatalf("send prompt: %v", err)
+	}
+	want := filepath.Join(repoRoot, "alice", "demo")
+	if runner.lastRun.WorkingDir != want {
+		t.Fatalf("expected working dir %q, got %q", want, runner.lastRun.WorkingDir)
+	}
+}
+
 type fakeRepoResolver struct {
 	repo schema.RepoRef
 }
@@ -1043,6 +1078,19 @@ func (u usageRunner) Run(context.Context, RunRequest) (RunHandle, error) {
 }
 
 func (usageRunner) RunCommand(context.Context, RunCommandRequest) (CommandHandle, error) {
+	return nil, errors.New("command not supported")
+}
+
+type captureRunRunner struct {
+	lastRun RunRequest
+}
+
+func (r *captureRunRunner) Run(_ context.Context, req RunRequest) (RunHandle, error) {
+	r.lastRun = req
+	return &workedHandle{}, nil
+}
+
+func (*captureRunRunner) RunCommand(context.Context, RunCommandRequest) (CommandHandle, error) {
 	return nil, errors.New("command not supported")
 }
 

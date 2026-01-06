@@ -365,7 +365,7 @@ func TestHandleStatusShowsUsage(t *testing.T) {
 	tab := schema.TabSnapshot{
 		ID:        tabID,
 		Name:      "demo",
-		Repo:      schema.RepoRef{Name: "demo", Path: "/host/repos/demo"},
+		Repo:      schema.RepoRef{Name: "demo"},
 		Model:     "gpt-5.2-codex",
 		SessionID: "sess-1",
 	}
@@ -420,7 +420,7 @@ func TestHandleStatusShowsUsage(t *testing.T) {
 	if !strings.Contains(joined, "Model:") || !strings.Contains(joined, "gpt-5.2-codex") {
 		t.Fatalf("expected model line, got %v", lines)
 	}
-	if !strings.Contains(joined, "Directory:") || !strings.Contains(joined, "/repos/demo") {
+	if !strings.Contains(joined, "Directory:") || !strings.Contains(joined, "/repos/alice/demo") {
 		t.Fatalf("expected directory line, got %v", lines)
 	}
 	if !strings.Contains(joined, "Tokens used:") || !strings.Contains(joined, "2K") {
@@ -442,7 +442,7 @@ func TestHandleNewEmitsStatusWithoutTab(t *testing.T) {
 				Tab: schema.TabSnapshot{
 					ID:   "tab-1",
 					Name: "demo",
-					Repo: schema.RepoRef{Name: "demo", Path: "/repos/demo"},
+					Repo: schema.RepoRef{Name: "demo"},
 				},
 				RepoCreated: true,
 			}, nil
@@ -479,7 +479,7 @@ func TestHandleShellUsesRunner(t *testing.T) {
 	repoRoot := "/repos-host"
 	tab := schema.TabSnapshot{
 		ID:   "tab1",
-		Repo: schema.RepoRef{Path: repoRoot + "/alice/demo"},
+		Repo: schema.RepoRef{Name: "demo"},
 	}
 	svc := &fakeService{
 		listTabsFn: func(_ context.Context, _ schema.ListTabsRequest) (schema.ListTabsResponse, error) {
@@ -524,7 +524,7 @@ func TestHandleShellAppendsOutput(t *testing.T) {
 				Tabs: []schema.TabSnapshot{{
 					ID:   tabID,
 					Name: "demo",
-					Repo: schema.RepoRef{Path: "/repos/demo"},
+					Repo: schema.RepoRef{Name: "demo"},
 				}},
 				ActiveTab: tabID,
 			}, nil
