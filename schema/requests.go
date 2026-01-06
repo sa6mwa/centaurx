@@ -96,6 +96,8 @@ type SetModelRequest struct {
 	UserID UserID
 	TabID  TabID
 	Model  ModelID
+	// ModelReasoningEffort optionally sets the reasoning effort for the tab.
+	ModelReasoningEffort ModelReasoningEffort
 }
 
 // SetModelResponse reports the updated tab snapshot.

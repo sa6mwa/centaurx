@@ -20,7 +20,8 @@ func TestWithContextAndFromContext(t *testing.T) {
 }
 
 func TestWithContextNil(t *testing.T) {
-	ctx := WithContext(nil, New())
+	var nilCtx context.Context
+	ctx := WithContext(nilCtx, New())
 	if ctx != nil {
 		t.Fatalf("expected nil context")
 	}

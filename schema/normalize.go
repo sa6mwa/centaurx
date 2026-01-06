@@ -24,6 +24,21 @@ func NormalizeModelID(model string) (ModelID, error) {
 	return ModelID(trimmed), nil
 }
 
+// NormalizeModelReasoningEffort validates and normalizes a reasoning effort value.
+// Allowed values: low, medium, high, xhigh.
+func NormalizeModelReasoningEffort(value string) (ModelReasoningEffort, error) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "", ErrInvalidModelReasoningEffort
+	}
+	switch trimmed {
+	case "low", "medium", "high", "xhigh":
+		return ModelReasoningEffort(trimmed), nil
+	default:
+		return "", ErrInvalidModelReasoningEffort
+	}
+}
+
 // ValidateUserID ensures a user id matches [a-z0-9._-] with no normalization.
 func ValidateUserID(userID UserID) error {
 	raw := string(userID)

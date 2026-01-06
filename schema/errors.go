@@ -21,6 +21,8 @@ var (
 	ErrNoTabs = errors.New("no tabs")
 	// ErrInvalidModel indicates an invalid model identifier.
 	ErrInvalidModel = errors.New("invalid model")
+	// ErrInvalidModelReasoningEffort indicates an invalid reasoning effort value.
+	ErrInvalidModelReasoningEffort = errors.New("invalid model reasoning effort")
 	// ErrEmptyPrompt indicates the prompt was empty.
 	ErrEmptyPrompt = errors.New("empty prompt")
 	// ErrRunnerUnavailable indicates no runner is configured.

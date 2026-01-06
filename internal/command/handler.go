@@ -23,6 +23,7 @@ import (
 
 const defaultCommitModel schema.ModelID = "gpt-5.1-codex-mini"
 const usageBarWidth = 10
+const modelReasoningEffortUsage = "low|medium|high|xhigh"
 
 // HandlerConfig configures slash command behavior.
 type HandlerConfig struct {
@@ -365,8 +366,8 @@ func (h *Handler) closeTab(ctx context.Context, userID schema.UserID, tabID sche
 }
 
 func (h *Handler) handleModel(ctx context.Context, userID schema.UserID, tabID schema.TabID, cmd Command) error {
-	if len(cmd.Args) < 1 {
-		return fmt.Errorf("usage: /model <model> (available: %s)", strings.Join(formatModels(h.cfg.AllowedModels), ", "))
+	if len(cmd.Args) < 1 || len(cmd.Args) > 2 {
+		return fmt.Errorf("usage: /model <model> [reasoning] (available: %s; reasoning: %s)", strings.Join(formatModels(h.cfg.AllowedModels), ", "), modelReasoningEffortUsage)
 	}
 	log := logx.WithUserTab(ctx, userID, tabID)
 	modelID, err := schema.NormalizeModelID(cmd.Args[0])
@@ -374,10 +375,19 @@ func (h *Handler) handleModel(ctx context.Context, userID schema.UserID, tabID s
 		log.Warn("command model failed", "err", err)
 		return err
 	}
+	reasoningEffort := schema.ModelReasoningEffort("")
+	if len(cmd.Args) == 2 {
+		reasoningEffort, err = schema.NormalizeModelReasoningEffort(cmd.Args[1])
+		if err != nil {
+			log.Warn("command model failed", "err", err)
+			return fmt.Errorf("usage: /model <model> [reasoning] (reasoning: %s)", modelReasoningEffortUsage)
+		}
+	}
 	resp, err := h.service.SetModel(ctx, schema.SetModelRequest{
-		UserID: userID,
-		TabID:  tabID,
-		Model:  modelID,
+		UserID:               userID,
+		TabID:                tabID,
+		Model:                modelID,
+		ModelReasoningEffort: reasoningEffort,
 	})
 	if err != nil {
 		log.Warn("command model failed", "err", err)
@@ -386,7 +396,7 @@ func (h *Handler) handleModel(ctx context.Context, userID schema.UserID, tabID s
 	_, _ = h.service.AppendOutput(ctx, schema.AppendOutputRequest{
 		UserID: userID,
 		TabID:  tabID,
-		Lines:  []string{fmt.Sprintf("model set to: %s", resp.Tab.Model)},
+		Lines:  []string{fmt.Sprintf("model set to: %s", schema.FormatModelWithReasoning(resp.Tab.Model, resp.Tab.ModelReasoningEffort))},
 	})
 	log.Info("command model completed", "model", resp.Tab.Model)
 	return nil
@@ -649,10 +659,7 @@ func (h *Handler) handleStatus(ctx context.Context, userID schema.UserID, tabID 
 		tokensUsed = usageResp.Usage.InputTokens + usageResp.Usage.OutputTokens
 	}
 
-	model := string(tab.Model)
-	if strings.TrimSpace(model) == "" {
-		model = "unknown"
-	}
+	model := schema.FormatModelWithReasoning(tab.Model, tab.ModelReasoningEffort)
 	dir := h.resolveStatusDir(ctx, userID, tabID, tab)
 	session := string(tab.SessionID)
 	if strings.TrimSpace(session) == "" {
@@ -1001,12 +1008,13 @@ func (h *Handler) generateCommitMessage(ctx context.Context, userID schema.UserI
 		log.Debug("audit command", "command_type", "codex", "command", command, "workdir", workingDir)
 	}
 	runReq := core.RunRequest{
-		WorkingDir:      workingDir,
-		Prompt:          prompt,
-		Model:           modelID,
-		ResumeSessionID: tab.SessionID,
-		JSON:            true,
-		SSHAuthSock:     info.SSHAuthSock,
+		WorkingDir:           workingDir,
+		Prompt:               prompt,
+		Model:                modelID,
+		ModelReasoningEffort: tab.ModelReasoningEffort,
+		ResumeSessionID:      tab.SessionID,
+		JSON:                 true,
+		SSHAuthSock:          info.SSHAuthSock,
 	}
 	handle, err := runner.Run(ctx, runReq)
 	if err != nil {
@@ -1068,7 +1076,7 @@ func helpLines(models []schema.ModelID) []string {
 		schema.HelpMarker + "**/close** - close current tab",
 		schema.HelpMarker + "**/quit**, **/exit**, **/logout** - exit session / log out",
 		schema.HelpMarker + "**/status** - show current session status",
-		schema.HelpMarker + "**/model** `<model>` - set model for current tab (available: " + modelList + ")",
+		schema.HelpMarker + "**/model** `<model> [reasoning]` - set model for current tab (available: " + modelList + "; reasoning: " + modelReasoningEffortUsage + ")",
 		schema.HelpMarker + "**/stop** or **/z** - stop running codex exec",
 		schema.HelpMarker + "**/renew** - start a fresh codex session for the current tab",
 		schema.HelpMarker + "**/chpasswd** - change your password",

@@ -77,6 +77,42 @@ func TestHandleModelUsage(t *testing.T) {
 	}
 }
 
+func TestHandleModelWithReasoning(t *testing.T) {
+	user := schema.UserID("alice")
+	tabID := schema.TabID("tab1")
+	var captured []string
+	var got schema.SetModelRequest
+	svc := &fakeService{
+		setModelFn: func(_ context.Context, req schema.SetModelRequest) (schema.SetModelResponse, error) {
+			got = req
+			return schema.SetModelResponse{
+				Tab: schema.TabSnapshot{
+					ID:                   req.TabID,
+					Model:                req.Model,
+					ModelReasoningEffort: req.ModelReasoningEffort,
+				},
+			}, nil
+		},
+		appendOutputFn: func(_ context.Context, req schema.AppendOutputRequest) (schema.AppendOutputResponse, error) {
+			captured = append(captured, req.Lines...)
+			return schema.AppendOutputResponse{}, nil
+		},
+	}
+	handler := NewHandler(svc, nil, HandlerConfig{
+		AllowedModels: []schema.ModelID{"gpt-5.2-codex"},
+	})
+	_, err := handler.Handle(context.Background(), user, tabID, "/model gpt-5.2-codex high")
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if got.ModelReasoningEffort != schema.ModelReasoningEffort("high") {
+		t.Fatalf("expected reasoning effort high, got %q", got.ModelReasoningEffort)
+	}
+	if len(captured) == 0 || !strings.Contains(strings.Join(captured, "\n"), "reasoning high") {
+		t.Fatalf("expected reasoning in output, got %v", captured)
+	}
+}
+
 func TestHandleHelpAppendsOutput(t *testing.T) {
 	var captured []string
 	svc := &fakeService{
@@ -417,7 +453,7 @@ func TestHandleStatusShowsUsage(t *testing.T) {
 		t.Fatalf("expected status header, got %v", lines)
 	}
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "Model:") || !strings.Contains(joined, "gpt-5.2-codex") {
+	if !strings.Contains(joined, "Model:") || !strings.Contains(joined, "gpt-5.2-codex") || !strings.Contains(joined, "reasoning medium") {
 		t.Fatalf("expected model line, got %v", lines)
 	}
 	if !strings.Contains(joined, "Directory:") || !strings.Contains(joined, "/repos/alice/demo") {

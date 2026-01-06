@@ -179,18 +179,19 @@ func (s *Server) Exec(req *runnerpb.ExecRequest, stream runnerpb.Runner_ExecServ
 	}
 	log := s.log(stream.Context()).With("run_id", req.RunId)
 	started := time.Now()
-	log.Info("runner exec start", "model", req.Model, "json", req.Json)
+	log.Info("runner exec start", "model", req.Model, "reasoning_effort", req.ModelReasoningEffort, "json", req.Json)
 	log.Debug("runner exec request", "workdir", req.WorkingDir, "ssh_auth_sock", req.SshAuthSock != "", "prompt_len", len(req.Prompt))
 	if len(req.Prompt) > 0 {
 		log.Trace("runner exec prompt", "preview", previewText(req.Prompt, 200), "truncated", len(req.Prompt) > 200)
 	}
 	runCtx := pslog.ContextWithLogger(stream.Context(), log)
 	handle, err := s.runner.Run(runCtx, core.RunRequest{
-		WorkingDir:  req.WorkingDir,
-		Prompt:      req.Prompt,
-		Model:       schema.ModelID(req.Model),
-		JSON:        req.Json,
-		SSHAuthSock: req.SshAuthSock,
+		WorkingDir:           req.WorkingDir,
+		Prompt:               req.Prompt,
+		Model:                schema.ModelID(req.Model),
+		ModelReasoningEffort: schema.ModelReasoningEffort(req.ModelReasoningEffort),
+		JSON:                 req.Json,
+		SSHAuthSock:          req.SshAuthSock,
 	})
 	if err != nil {
 		log.Error("runner exec failed", "err", err)
@@ -226,19 +227,20 @@ func (s *Server) ExecResume(req *runnerpb.ExecResumeRequest, stream runnerpb.Run
 	}
 	log := s.log(stream.Context()).With("run_id", req.RunId)
 	started := time.Now()
-	log.Info("runner exec resume start", "model", req.Model, "json", req.Json, "resume_id", req.ResumeSessionId)
+	log.Info("runner exec resume start", "model", req.Model, "reasoning_effort", req.ModelReasoningEffort, "json", req.Json, "resume_id", req.ResumeSessionId)
 	log.Debug("runner exec resume request", "workdir", req.WorkingDir, "ssh_auth_sock", req.SshAuthSock != "", "prompt_len", len(req.Prompt))
 	if len(req.Prompt) > 0 {
 		log.Trace("runner exec resume prompt", "preview", previewText(req.Prompt, 200), "truncated", len(req.Prompt) > 200)
 	}
 	runCtx := pslog.ContextWithLogger(stream.Context(), log)
 	handle, err := s.runner.Run(runCtx, core.RunRequest{
-		WorkingDir:      req.WorkingDir,
-		Prompt:          req.Prompt,
-		Model:           schema.ModelID(req.Model),
-		ResumeSessionID: schema.SessionID(req.ResumeSessionId),
-		JSON:            req.Json,
-		SSHAuthSock:     req.SshAuthSock,
+		WorkingDir:           req.WorkingDir,
+		Prompt:               req.Prompt,
+		Model:                schema.ModelID(req.Model),
+		ModelReasoningEffort: schema.ModelReasoningEffort(req.ModelReasoningEffort),
+		ResumeSessionID:      schema.SessionID(req.ResumeSessionId),
+		JSON:                 req.Json,
+		SSHAuthSock:          req.SshAuthSock,
 	})
 	if err != nil {
 		log.Error("runner exec resume failed", "err", err)

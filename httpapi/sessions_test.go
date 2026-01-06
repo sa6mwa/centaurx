@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+type sessionTestKey struct{}
+
 func TestSessionStoreCreateGetDelete(t *testing.T) {
 	store := newSessionStore(time.Hour)
 	token, sess := store.create("alice")
@@ -48,10 +50,11 @@ func TestSessionStoreExpiration(t *testing.T) {
 
 func TestSessionStoreBaseContext(t *testing.T) {
 	store := newSessionStore(time.Hour)
-	base := context.WithValue(context.Background(), "key", "value")
+	baseKey := sessionTestKey{}
+	base := context.WithValue(context.Background(), baseKey, "value")
 	store.setBaseContext(base)
 	_, sess := store.create("alice")
-	if got := sess.ctx.Value("key"); got != "value" {
+	if got := sess.ctx.Value(baseKey); got != "value" {
 		t.Fatalf("expected base context value, got %v", got)
 	}
 }

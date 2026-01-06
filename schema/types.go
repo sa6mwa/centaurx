@@ -18,6 +18,9 @@ type RepoName string
 // ModelID identifies an LLM model.
 type ModelID string
 
+// ModelReasoningEffort identifies the reasoning effort level.
+type ModelReasoningEffort string
+
 // ThemeName identifies a UI theme.
 type ThemeName string
 

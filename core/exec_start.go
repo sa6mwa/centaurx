@@ -19,12 +19,16 @@ type gitSummary struct {
 }
 
 func buildExecStartLines(now time.Time, tab *tab, summary gitSummary) []string {
-	labelWidth := maxLabelWidth([]string{"Repository", "Branch", "Remote", "Git status", "Session"})
+	labelWidth := maxLabelWidth([]string{"Repository", "Branch", "Remote", "Git status", "Model", "Session"})
 	repoLabel := ""
 	session := ""
+	model := schema.ModelID("")
+	effort := schema.ModelReasoningEffort("")
 	if tab != nil {
 		repoLabel = string(tab.Repo.Name)
 		session = string(tab.SessionID)
+		model = tab.Model
+		effort = tab.ModelReasoningEffort
 	}
 	if strings.TrimSpace(repoLabel) == "" {
 		repoLabel = "(unknown)"
@@ -40,6 +44,7 @@ func buildExecStartLines(now time.Time, tab *tab, summary gitSummary) []string {
 	lines = append(lines, formatLabeledLines("Branch", []string{summary.branch}, labelWidth)...)
 	lines = append(lines, formatLabeledLines("Remote", summary.remotes, labelWidth)...)
 	lines = append(lines, formatLabeledLines("Git status", summary.statusLines, labelWidth)...)
+	lines = append(lines, formatLabeledLines("Model", []string{schema.FormatModelWithReasoning(model, effort)}, labelWidth)...)
 	lines = append(lines, formatLabeledLines("Session", []string{session}, labelWidth)...)
 	return lines
 }

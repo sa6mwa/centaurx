@@ -209,11 +209,12 @@ func runDoctorCodex(ctx context.Context, logger pslog.Logger, runner core.Runner
 	}
 	logger.Info("doctor codex start", "model", modelID)
 	handle, err := runner.Run(runCtx, core.RunRequest{
-		WorkingDir:  workDir,
-		Prompt:      prompt,
-		Model:       modelID,
-		JSON:        true,
-		SSHAuthSock: sshSock,
+		WorkingDir:           workDir,
+		Prompt:               prompt,
+		Model:                modelID,
+		ModelReasoningEffort: schema.DefaultModelReasoningEffort,
+		JSON:                 true,
+		SSHAuthSock:          sshSock,
 	})
 	if err != nil {
 		return fmt.Errorf("doctor codex start: %w", err)

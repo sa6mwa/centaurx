@@ -50,6 +50,7 @@ func (r *Runner) Run(ctx context.Context, req core.RunRequest) (core.RunHandle, 
 			"args_len", len(args),
 			"args", args,
 			"model", req.Model,
+			"reasoning_effort", req.ModelReasoningEffort,
 			"resume", req.ResumeSessionID != "",
 			"json", req.JSON,
 			"prompt_len", len(req.Prompt),
@@ -126,6 +127,11 @@ func buildExecArgs(cfg Config, req core.RunRequest) []string {
 	if req.Model != "" {
 		args = append(args, "--model", string(req.Model))
 	}
+	effort := strings.TrimSpace(string(req.ModelReasoningEffort))
+	if effort == "" {
+		effort = string(schema.DefaultModelReasoningEffort)
+	}
+	args = append(args, "-c", fmt.Sprintf("model_reasoning_effort=%s", effort))
 	args = append(args, cfg.ExtraArgs...)
 	if req.ResumeSessionID != "" {
 		args = append(args, "resume", string(req.ResumeSessionID))

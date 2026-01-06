@@ -89,17 +89,18 @@ func (c *Client) Usage(ctx context.Context) (core.UsageInfo, error) {
 func (c *Client) Run(ctx context.Context, req core.RunRequest) (core.RunHandle, error) {
 	runID := newRunID()
 	log := pslog.Ctx(ctx).With("run_id", runID)
-	log.Info("runner grpc exec start", "model", req.Model, "json", req.JSON)
+	log.Info("runner grpc exec start", "model", req.Model, "reasoning_effort", req.ModelReasoningEffort, "json", req.JSON)
 	log.Debug("runner grpc exec request", "workdir", req.WorkingDir, "ssh_auth_sock", req.SSHAuthSock != "", "prompt_len", len(req.Prompt), "resume", req.ResumeSessionID != "")
 	if req.ResumeSessionID != "" {
 		stream, err := c.client.ExecResume(ctx, &runnerpb.ExecResumeRequest{
-			RunId:           runID,
-			WorkingDir:      req.WorkingDir,
-			Prompt:          req.Prompt,
-			Model:           string(req.Model),
-			ResumeSessionId: string(req.ResumeSessionID),
-			Json:            req.JSON,
-			SshAuthSock:     req.SSHAuthSock,
+			RunId:                runID,
+			WorkingDir:           req.WorkingDir,
+			Prompt:               req.Prompt,
+			Model:                string(req.Model),
+			ModelReasoningEffort: string(req.ModelReasoningEffort),
+			ResumeSessionId:      string(req.ResumeSessionID),
+			Json:                 req.JSON,
+			SshAuthSock:          req.SSHAuthSock,
 		})
 		if err != nil {
 			logGRPCError(log, "runner grpc exec failed", err)
@@ -108,12 +109,13 @@ func (c *Client) Run(ctx context.Context, req core.RunRequest) (core.RunHandle, 
 		return newRunHandle(c.client, runID, stream, log), nil
 	}
 	stream, err := c.client.Exec(ctx, &runnerpb.ExecRequest{
-		RunId:       runID,
-		WorkingDir:  req.WorkingDir,
-		Prompt:      req.Prompt,
-		Model:       string(req.Model),
-		Json:        req.JSON,
-		SshAuthSock: req.SSHAuthSock,
+		RunId:                runID,
+		WorkingDir:           req.WorkingDir,
+		Prompt:               req.Prompt,
+		Model:                string(req.Model),
+		ModelReasoningEffort: string(req.ModelReasoningEffort),
+		Json:                 req.JSON,
+		SshAuthSock:          req.SSHAuthSock,
 	})
 	if err != nil {
 		logGRPCError(log, "runner grpc exec failed", err)

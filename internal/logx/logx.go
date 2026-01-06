@@ -9,6 +9,10 @@ import (
 
 type contextKey int
 
+type contextValueReader interface {
+	Value(key any) any
+}
+
 const (
 	userKey contextKey = iota
 	tabKey
@@ -95,16 +99,16 @@ func ContextWithUserTabLogger(ctx context.Context, log pslog.Logger, userID sche
 	return ContextWithUserTab(ctx, userID, tabID)
 }
 
-// CopyContextFields copies user/tab markers from src to dst.
-func CopyContextFields(dst context.Context, src context.Context) context.Context {
+// CopyContextFields copies user/tab markers from src to ctx.
+func CopyContextFields(ctx context.Context, src contextValueReader) context.Context {
 	if src == nil {
-		return dst
+		return ctx
 	}
 	if user, ok := src.Value(userKey).(schema.UserID); ok && user != "" {
-		dst = ContextWithUser(dst, user)
+		ctx = ContextWithUser(ctx, user)
 	}
 	if tab, ok := src.Value(tabKey).(schema.TabID); ok && tab != "" {
-		dst = ContextWithTab(dst, tab)
+		ctx = ContextWithTab(ctx, tab)
 	}
-	return dst
+	return ctx
 }

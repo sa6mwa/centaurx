@@ -14,12 +14,13 @@ type Runner interface {
 
 // RunRequest describes a codex exec invocation.
 type RunRequest struct {
-	WorkingDir      string
-	Prompt          string
-	Model           schema.ModelID
-	ResumeSessionID schema.SessionID
-	JSON            bool
-	SSHAuthSock     string
+	WorkingDir           string
+	Prompt               string
+	Model                schema.ModelID
+	ModelReasoningEffort schema.ModelReasoningEffort
+	ResumeSessionID      schema.SessionID
+	JSON                 bool
+	SSHAuthSock          string
 }
 
 // RunHandle exposes the event stream and process lifecycle controls.

@@ -309,15 +309,16 @@ func (ItemType) EnumDescriptor() ([]byte, []int) {
 }
 
 type ExecRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	WorkingDir    string                 `protobuf:"bytes,2,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
-	Prompt        string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	Model         string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
-	Json          bool                   `protobuf:"varint,5,opt,name=json,proto3" json:"json,omitempty"`
-	SshAuthSock   string                 `protobuf:"bytes,6,opt,name=ssh_auth_sock,json=sshAuthSock,proto3" json:"ssh_auth_sock,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	RunId                string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	WorkingDir           string                 `protobuf:"bytes,2,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	Prompt               string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Model                string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	Json                 bool                   `protobuf:"varint,5,opt,name=json,proto3" json:"json,omitempty"`
+	SshAuthSock          string                 `protobuf:"bytes,6,opt,name=ssh_auth_sock,json=sshAuthSock,proto3" json:"ssh_auth_sock,omitempty"`
+	ModelReasoningEffort string                 `protobuf:"bytes,7,opt,name=model_reasoning_effort,json=modelReasoningEffort,proto3" json:"model_reasoning_effort,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ExecRequest) Reset() {
@@ -392,17 +393,25 @@ func (x *ExecRequest) GetSshAuthSock() string {
 	return ""
 }
 
+func (x *ExecRequest) GetModelReasoningEffort() string {
+	if x != nil {
+		return x.ModelReasoningEffort
+	}
+	return ""
+}
+
 type ExecResumeRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	RunId           string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	WorkingDir      string                 `protobuf:"bytes,2,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
-	Prompt          string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	Model           string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
-	ResumeSessionId string                 `protobuf:"bytes,5,opt,name=resume_session_id,json=resumeSessionId,proto3" json:"resume_session_id,omitempty"`
-	Json            bool                   `protobuf:"varint,6,opt,name=json,proto3" json:"json,omitempty"`
-	SshAuthSock     string                 `protobuf:"bytes,7,opt,name=ssh_auth_sock,json=sshAuthSock,proto3" json:"ssh_auth_sock,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	RunId                string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	WorkingDir           string                 `protobuf:"bytes,2,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	Prompt               string                 `protobuf:"bytes,3,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	Model                string                 `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	ResumeSessionId      string                 `protobuf:"bytes,5,opt,name=resume_session_id,json=resumeSessionId,proto3" json:"resume_session_id,omitempty"`
+	Json                 bool                   `protobuf:"varint,6,opt,name=json,proto3" json:"json,omitempty"`
+	SshAuthSock          string                 `protobuf:"bytes,7,opt,name=ssh_auth_sock,json=sshAuthSock,proto3" json:"ssh_auth_sock,omitempty"`
+	ModelReasoningEffort string                 `protobuf:"bytes,8,opt,name=model_reasoning_effort,json=modelReasoningEffort,proto3" json:"model_reasoning_effort,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ExecResumeRequest) Reset() {
@@ -480,6 +489,13 @@ func (x *ExecResumeRequest) GetJson() bool {
 func (x *ExecResumeRequest) GetSshAuthSock() string {
 	if x != nil {
 		return x.SshAuthSock
+	}
+	return ""
+}
+
+func (x *ExecResumeRequest) GetModelReasoningEffort() string {
+	if x != nil {
+		return x.ModelReasoningEffort
 	}
 	return ""
 }
@@ -1546,7 +1562,7 @@ var File_proto_runner_v1_runner_proto protoreflect.FileDescriptor
 
 const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/runner/v1/runner.proto\x12\x12centaurx.runner.v1\"\xab\x01\n" +
+	"\x1cproto/runner/v1/runner.proto\x12\x12centaurx.runner.v1\"\xe1\x01\n" +
 	"\vExecRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1f\n" +
 	"\vworking_dir\x18\x02 \x01(\tR\n" +
@@ -1554,7 +1570,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x06prompt\x18\x03 \x01(\tR\x06prompt\x12\x14\n" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x12\x12\n" +
 	"\x04json\x18\x05 \x01(\bR\x04json\x12\"\n" +
-	"\rssh_auth_sock\x18\x06 \x01(\tR\vsshAuthSock\"\xdd\x01\n" +
+	"\rssh_auth_sock\x18\x06 \x01(\tR\vsshAuthSock\x124\n" +
+	"\x16model_reasoning_effort\x18\a \x01(\tR\x14modelReasoningEffort\"\x93\x02\n" +
 	"\x11ExecResumeRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1f\n" +
 	"\vworking_dir\x18\x02 \x01(\tR\n" +
@@ -1563,7 +1580,8 @@ const file_proto_runner_v1_runner_proto_rawDesc = "" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x12*\n" +
 	"\x11resume_session_id\x18\x05 \x01(\tR\x0fresumeSessionId\x12\x12\n" +
 	"\x04json\x18\x06 \x01(\bR\x04json\x12\"\n" +
-	"\rssh_auth_sock\x18\a \x01(\tR\vsshAuthSock\"\xa6\x01\n" +
+	"\rssh_auth_sock\x18\a \x01(\tR\vsshAuthSock\x124\n" +
+	"\x16model_reasoning_effort\x18\b \x01(\tR\x14modelReasoningEffort\"\xa6\x01\n" +
 	"\x11RunCommandRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1f\n" +
 	"\vworking_dir\x18\x02 \x01(\tR\n" +

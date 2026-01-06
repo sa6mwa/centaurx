@@ -20,13 +20,14 @@ type BufferSnapshot struct {
 
 // TabSnapshot captures a tab for persistence.
 type TabSnapshot struct {
-	ID        schema.TabID     `json:"id"`
-	Name      schema.TabName   `json:"name"`
-	Repo      schema.RepoRef   `json:"repo"`
-	Model     schema.ModelID   `json:"model"`
-	SessionID schema.SessionID `json:"session_id"`
-	Buffer    BufferSnapshot   `json:"buffer"`
-	History   []string         `json:"history,omitempty"`
+	ID                   schema.TabID                `json:"id"`
+	Name                 schema.TabName              `json:"name"`
+	Repo                 schema.RepoRef              `json:"repo"`
+	Model                schema.ModelID              `json:"model"`
+	ModelReasoningEffort schema.ModelReasoningEffort `json:"model_reasoning_effort,omitempty"`
+	SessionID            schema.SessionID            `json:"session_id"`
+	Buffer               BufferSnapshot              `json:"buffer"`
+	History              []string                    `json:"history,omitempty"`
 }
 
 // UserSnapshot captures a user's tab state for persistence.

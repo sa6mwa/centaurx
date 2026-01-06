@@ -151,13 +151,14 @@ func (s *service) CreateTab(ctx context.Context, req schema.CreateTabRequest) (s
 	tabName = schema.TabName(formatTabName(string(tabName), s.cfg.TabNameMax, s.cfg.TabNameSuffix))
 
 	tab := &tab{
-		ID:      tabID,
-		Name:    tabName,
-		Repo:    schema.RepoRef{Name: repoName},
-		Model:   s.cfg.DefaultModel,
-		Status:  schema.TabStatusIdle,
-		buffer:  newBufferWithMaxLines(s.cfg.BufferMaxLines),
-		history: newHistory(defaultHistoryMax),
+		ID:                   tabID,
+		Name:                 tabName,
+		Repo:                 schema.RepoRef{Name: repoName},
+		Model:                s.cfg.DefaultModel,
+		ModelReasoningEffort: schema.DefaultModelReasoningEffort,
+		Status:               schema.TabStatusIdle,
+		buffer:               newBufferWithMaxLines(s.cfg.BufferMaxLines),
+		history:              newHistory(defaultHistoryMax),
 	}
 
 	s.mu.Lock()
@@ -390,12 +391,13 @@ func (s *service) SendPrompt(ctx context.Context, req schema.SendPromptRequest) 
 	startLines := buildExecStartLines(time.Now(), tab, collectGitSummary(runCtx, runner, workingDir, info.SSHAuthSock))
 	s.appendLines(log, userID, tab.ID, startLines)
 	runReq := RunRequest{
-		WorkingDir:      workingDir,
-		Prompt:          req.Prompt,
-		Model:           tab.Model,
-		ResumeSessionID: tab.SessionID,
-		JSON:            true,
-		SSHAuthSock:     info.SSHAuthSock,
+		WorkingDir:           workingDir,
+		Prompt:               req.Prompt,
+		Model:                tab.Model,
+		ModelReasoningEffort: tab.ModelReasoningEffort,
+		ResumeSessionID:      tab.SessionID,
+		JSON:                 true,
+		SSHAuthSock:          info.SSHAuthSock,
 	}
 	started := time.Now()
 	handle, err := runner.Run(runCtx, runReq)
@@ -437,6 +439,13 @@ func (s *service) SetModel(ctx context.Context, req schema.SetModelRequest) (sch
 	if err != nil {
 		return schema.SetModelResponse{}, err
 	}
+	normalizedEffort := schema.ModelReasoningEffort("")
+	if strings.TrimSpace(string(req.ModelReasoningEffort)) != "" {
+		normalizedEffort, err = schema.NormalizeModelReasoningEffort(string(req.ModelReasoningEffort))
+		if err != nil {
+			return schema.SetModelResponse{}, err
+		}
+	}
 
 	s.mu.Lock()
 	state := s.getOrCreateUserStateLocked(userID)
@@ -447,6 +456,12 @@ func (s *service) SetModel(ctx context.Context, req schema.SetModelRequest) (sch
 		return schema.SetModelResponse{}, schema.ErrTabNotFound
 	}
 	tab.Model = normalizedModel
+	if strings.TrimSpace(string(tab.ModelReasoningEffort)) == "" {
+		tab.ModelReasoningEffort = schema.DefaultModelReasoningEffort
+	}
+	if strings.TrimSpace(string(normalizedEffort)) != "" {
+		tab.ModelReasoningEffort = normalizedEffort
+	}
 	active := activeTabFromContext(ctx, state)
 	event := schema.TabEvent{
 		UserID:    userID,
@@ -1483,15 +1498,20 @@ func (s *service) loadUserStateLocked(userID schema.UserID) *userState {
 	}
 	for _, snap := range snapshot.Tabs {
 		repoName := snap.Repo.Name
+		effort := snap.ModelReasoningEffort
+		if strings.TrimSpace(string(effort)) == "" {
+			effort = schema.DefaultModelReasoningEffort
+		}
 		loaded.tabs[snap.ID] = &tab{
-			ID:        snap.ID,
-			Name:      snap.Name,
-			Repo:      schema.RepoRef{Name: repoName},
-			Model:     snap.Model,
-			SessionID: snap.SessionID,
-			Status:    schema.TabStatusIdle,
-			buffer:    newBufferFromPersistedWithMaxLines(persistedBuffer{Lines: snap.Buffer.Lines, ScrollOffset: snap.Buffer.ScrollOffset}, s.cfg.BufferMaxLines),
-			history:   newHistoryFromPersisted(snap.History),
+			ID:                   snap.ID,
+			Name:                 snap.Name,
+			Repo:                 schema.RepoRef{Name: repoName},
+			Model:                snap.Model,
+			ModelReasoningEffort: effort,
+			SessionID:            snap.SessionID,
+			Status:               schema.TabStatusIdle,
+			buffer:               newBufferFromPersistedWithMaxLines(persistedBuffer{Lines: snap.Buffer.Lines, ScrollOffset: snap.Buffer.ScrollOffset}, s.cfg.BufferMaxLines),
+			history:              newHistoryFromPersisted(snap.History),
 		}
 	}
 	for _, id := range snapshot.Order {
@@ -1554,11 +1574,12 @@ func (s *service) snapshotUser(userID schema.UserID) (persist.UserSnapshot, bool
 			history = tab.history.Entries()
 		}
 		tabs = append(tabs, persist.TabSnapshot{
-			ID:        tab.ID,
-			Name:      tab.Name,
-			Repo:      schema.RepoRef{Name: tab.Repo.Name},
-			Model:     tab.Model,
-			SessionID: tab.SessionID,
+			ID:                   tab.ID,
+			Name:                 tab.Name,
+			Repo:                 schema.RepoRef{Name: tab.Repo.Name},
+			Model:                tab.Model,
+			ModelReasoningEffort: tab.ModelReasoningEffort,
+			SessionID:            tab.SessionID,
 			Buffer: persist.BufferSnapshot{
 				Lines:        buffer.Lines,
 				ScrollOffset: buffer.ScrollOffset,

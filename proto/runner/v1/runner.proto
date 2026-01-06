@@ -20,6 +20,7 @@ message ExecRequest {
   string model = 4;
   bool json = 5;
   string ssh_auth_sock = 6;
+  string model_reasoning_effort = 7;
 }
 
 message ExecResumeRequest {
@@ -30,6 +31,7 @@ message ExecResumeRequest {
   string resume_session_id = 5;
   bool json = 6;
   string ssh_auth_sock = 7;
+  string model_reasoning_effort = 8;
 }
 
 message RunCommandRequest {

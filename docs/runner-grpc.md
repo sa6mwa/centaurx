@@ -47,6 +47,7 @@ message ExecRequest {
   string model = 4;            // optional; empty = default
   bool json = 5;               // required; should be true
   string ssh_auth_sock = 6;    // optional; per-user SSH_AUTH_SOCK
+  string model_reasoning_effort = 7; // optional; low | medium | high | xhigh
 }
 
 message ExecResumeRequest {
@@ -57,6 +58,7 @@ message ExecResumeRequest {
   string resume_session_id = 5; // required; thread_id
   bool json = 6;               // required; should be true
   string ssh_auth_sock = 7;    // optional; per-user SSH_AUTH_SOCK
+  string model_reasoning_effort = 8; // optional; low | medium | high | xhigh
 }
 
 message RunCommandRequest {

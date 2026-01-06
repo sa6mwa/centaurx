@@ -34,6 +34,8 @@ data class TabSnapshot(
     val repo: RepoRef? = null,
     @JsonNames("model", "Model")
     val model: String? = null,
+    @JsonNames("model_reasoning_effort", "ModelReasoningEffort")
+    val modelReasoningEffort: String? = null,
     @JsonNames("session_id", "SessionID")
     val sessionId: String? = null,
     @JsonNames("status", "Status")

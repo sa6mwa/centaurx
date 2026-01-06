@@ -14,13 +14,14 @@ const (
 
 // TabSnapshot is a read-only view of tab state for transports.
 type TabSnapshot struct {
-	ID        TabID
-	Name      TabName
-	Repo      RepoRef
-	Model     ModelID
-	SessionID SessionID
-	Status    TabStatus
-	Active    bool
+	ID                   TabID
+	Name                 TabName
+	Repo                 RepoRef
+	Model                ModelID
+	ModelReasoningEffort ModelReasoningEffort
+	SessionID            SessionID
+	Status               TabStatus
+	Active               bool
 }
 
 // BufferSnapshot represents the current scrollback view.
