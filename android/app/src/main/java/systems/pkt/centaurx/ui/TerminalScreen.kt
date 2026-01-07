@@ -253,26 +253,7 @@ private fun PromptInput(
 
     Surface(
         modifier = modifier
-            .then(heightModifier)
-            .testTag(TestTags.TerminalPrompt)
-            .focusRequester(focusRequester)
-            .onFocusChanged(onFocusChanged)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
-                    onSend()
-                    return@onPreviewKeyEvent true
-                }
-                if (event.key == Key.DirectionUp) {
-                    onHistoryNavigate(-1)
-                    return@onPreviewKeyEvent true
-                }
-                if (event.key == Key.DirectionDown) {
-                    onHistoryNavigate(1)
-                    return@onPreviewKeyEvent true
-                }
-                false
-            },
+            .then(heightModifier),
         shape = shape,
         color = containerColor,
         border = BorderStroke(1.dp, borderColor),
@@ -294,6 +275,25 @@ private fun PromptInput(
                 .fillMaxWidth()
                 .then(heightModifier)
                 .padding(padding)
+                .testTag(TestTags.TerminalPrompt)
+                .focusRequester(focusRequester)
+                .onFocusChanged(onFocusChanged)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
+                        onSend()
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.key == Key.DirectionUp) {
+                        onHistoryNavigate(-1)
+                        return@onPreviewKeyEvent true
+                    }
+                    if (event.key == Key.DirectionDown) {
+                        onHistoryNavigate(1)
+                        return@onPreviewKeyEvent true
+                    }
+                    false
+                }
                 .semantics { contentDescription = "Prompt input" },
             decorationBox = { innerTextField ->
                 Row(

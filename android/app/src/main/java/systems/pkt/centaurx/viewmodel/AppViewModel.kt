@@ -27,6 +27,8 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     private var bufferPollJob: Job? = null
     private var lastSeq: Long = 0
     private val streamReady = MutableStateFlow(false)
+    private var sessionEpoch: Long = 0
+    private var lastActiveTabId: String? = null
 
     init {
         viewModelScope.launch {
@@ -84,6 +86,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun updateEndpoint(value: String) {
         repository.setEndpoint(value)
+        bumpSessionEpoch()
         stopStream()
         resetClientState()
     }
@@ -102,6 +105,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
             clearLoginError()
             try {
                 val resp = repository.login(username, password, totp)
+                bumpSessionEpoch()
                 _state.update {
                     it.copy(
                         username = resp.username,
@@ -125,11 +129,13 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun logout() {
         viewModelScope.launch {
+            bumpSessionEpoch()
+            val epoch = sessionEpoch
             setBusy(true)
             try {
                 repository.logout()
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 setStatus(err.message ?: "logout failed", StatusLevel.Error)
             } finally {
                 stopStream()
@@ -146,6 +152,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         totp: String,
     ) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             setBusy(true)
             _state.update { it.copy(chpasswdError = null) }
             try {
@@ -153,7 +160,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                 setStatus("password updated", StatusLevel.Info)
                 showChangePassword(false)
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 _state.update { it.copy(chpasswdError = err.message ?: "password update failed") }
             } finally {
                 setBusy(false)
@@ -163,6 +170,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun uploadCodexAuth(rawJson: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             setBusy(true)
             _state.update { it.copy(codexAuthError = null) }
             try {
@@ -170,7 +178,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                 setStatus("codex auth updated", StatusLevel.Info)
                 showCodexAuth(false)
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 _state.update { it.copy(codexAuthError = err.message ?: "codex auth upload failed") }
             } finally {
                 setBusy(false)
@@ -180,6 +188,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun rotateSSHKey(confirmation: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             setBusy(true)
             _state.update { it.copy(rotateSSHKeyError = null) }
             if (confirmation.trim() != "YES") {
@@ -192,7 +201,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                 _state.update { it.copy(status = null) }
                 showRotateSSHKey(false)
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 _state.update { it.copy(rotateSSHKeyError = err.message ?: "ssh key rotation failed") }
             } finally {
                 setBusy(false)
@@ -202,13 +211,14 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun activateTab(tabId: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             try {
                 repository.activateTab(tabId)
                 _state.update { it.copy(activeTabId = tabId, status = null) }
                 ensureHistoryLoaded(tabId)
                 ensureBufferLoaded(tabId)
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 setStatus(err.message ?: "activate failed", StatusLevel.Error)
             }
         }
@@ -216,6 +226,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun submitPrompt(tabId: String?, input: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             setBusy(true)
             try {
                 awaitStreamReady()
@@ -233,7 +244,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                     refreshSnapshotFallback()
                 }
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 setStatus(err.message ?: "prompt failed", StatusLevel.Error)
             } finally {
                 setBusy(false)
@@ -243,6 +254,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun loadHistory(tabId: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             try {
                 val resp = repository.getHistory(tabId)
                 _state.update { state ->
@@ -251,7 +263,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                     state.copy(history = next)
                 }
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 setStatus(err.message ?: "history failed", StatusLevel.Error)
             }
         }
@@ -259,6 +271,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     fun loadBuffer(tabId: String) {
         viewModelScope.launch {
+            val epoch = sessionEpoch
             try {
                 val buffer = repository.getBuffer(tabId, MAX_LINES).buffer
                 _state.update { state ->
@@ -267,7 +280,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                     state.copy(buffers = next)
                 }
             } catch (err: ApiException) {
-                if (handleApiException(err)) return@launch
+                if (handleApiException(err, epoch)) return@launch
                 setStatus(err.message ?: "buffer failed", StatusLevel.Error)
             }
         }
@@ -320,6 +333,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     private suspend fun checkSession() {
         try {
             val resp = repository.me()
+            bumpSessionEpoch()
             _state.update {
                 it.copy(
                     username = resp.username,
@@ -336,6 +350,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     private fun startStream() {
         stopStream()
+        val epoch = sessionEpoch
         streamJob = viewModelScope.launch {
             while (true) {
                 try {
@@ -345,7 +360,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
                     }
                 } catch (err: Exception) {
                     if (!isActive) return@launch
-                    if (err is ApiException && handleApiException(err)) return@launch
+                    if (err is ApiException && handleApiException(err, epoch)) return@launch
                 }
                 if (!isActive) return@launch
                 setStreamDisconnected()
@@ -531,6 +546,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         lastSeq = 0
         stopBufferPolling()
         streamReady.value = false
+        lastActiveTabId = _state.value.activeTabId
         _state.update {
             it.copy(
                 username = null,
@@ -557,13 +573,16 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         _state.update { it.copy(status = StatusMessage(message, level)) }
     }
 
-    private fun handleApiException(err: ApiException): Boolean {
-        if (err.statusCode == 401) {
-            stopStream()
-            resetClientState("session expired")
+    private fun handleApiException(err: ApiException, epoch: Long): Boolean {
+        if (err.statusCode != 401) {
+            return false
+        }
+        if (epoch != sessionEpoch) {
             return true
         }
-        return false
+        stopStream()
+        resetClientState("session expired")
+        return true
     }
 
     private fun setBusy(busy: Boolean) {
@@ -572,18 +591,23 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     private fun startBufferPolling() {
         if (bufferPollJob?.isActive == true) return
+        val epoch = sessionEpoch
         bufferPollJob = viewModelScope.launch {
             while (isActive) {
                 try {
                     refreshSnapshotFallback()
                 } catch (err: ApiException) {
-                    if (handleApiException(err)) return@launch
+                    if (handleApiException(err, epoch)) return@launch
                 } catch (_: Exception) {
                     // keep quiet; stream status already communicates issues
                 }
                 delay(BUFFER_POLL_MS)
             }
         }
+    }
+
+    private fun bumpSessionEpoch() {
+        sessionEpoch += 1
     }
 
     private fun stopBufferPolling() {
@@ -621,6 +645,14 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         } catch (_: Exception) {
             // Stream will retry; no need to surface transient errors here.
         }
+        val epoch = sessionEpoch
+        awaitStreamReady()
+        if (!streamReady.value || epoch != sessionEpoch) return
+        try {
+            refreshSnapshotFallback()
+        } catch (_: Exception) {
+            // best-effort refresh to capture output emitted during stream handshake
+        }
     }
 
     private suspend fun awaitStreamReady(timeoutMs: Long = STREAM_READY_TIMEOUT_MS) {
@@ -640,8 +672,9 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
 
     private fun resolveActiveTab(current: String?, candidate: String?, tabs: List<TabSnapshot>): String? {
         val ids = tabs.map { it.id }.toSet()
-        if (!current.isNullOrBlank() && ids.contains(current)) {
-            return current
+        val preferred = current ?: lastActiveTabId
+        if (!preferred.isNullOrBlank() && ids.contains(preferred)) {
+            return preferred
         }
         if (!candidate.isNullOrBlank() && ids.contains(candidate)) {
             return candidate
