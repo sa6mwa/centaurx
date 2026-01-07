@@ -3,6 +3,7 @@ package systems.pkt.centaurx.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,10 +17,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,19 +43,20 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import systems.pkt.centaurx.MaxTerminalFontSizeSp
@@ -123,13 +127,13 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
     val screenPadding = if (isCompact) 8.dp else 12.dp
     val spacing = if (isCompact) 6.dp else 8.dp
     val terminalPadding = if (isCompact) 6.dp else 10.dp
-    val promptHeight = if (isCompact) 46.dp else 50.dp
-    val promptMaxHeight = if (isCompact) 130.dp else 160.dp
+    val promptHeight = if (isCompact) 36.dp else 40.dp
+    val promptMaxHeight = if (isCompact) 110.dp else 140.dp
     val promptMaxLines = if (isCompact) 4 else 6
 
     val terminalTextStyle = rememberTerminalTextStyle(fontSizeSp = state.fontSizeSp)
     val promptTextStyle = terminalTextStyle
-    val sendButtonWidth = if (isCompact) 76.dp else 88.dp
+    val sendButtonWidth = if (isCompact) 70.dp else 80.dp
 
     Column(
         modifier = Modifier
@@ -149,7 +153,7 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(6.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)),
         ) {
@@ -169,7 +173,7 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
                 .padding(bottom = if (isCompact) 6.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
+            PromptInput(
                 value = promptValue,
                 onValueChange = {
                     promptValue = it
@@ -177,54 +181,33 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
                         viewModel.resetHistoryIndex(activeTab)
                     }
                 },
-                textStyle = promptTextStyle,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = promptHeight, max = promptMaxHeight)
-                    .testTag(TestTags.TerminalPrompt)
-                    .focusRequester(promptFocusRequester)
-                    .onFocusChanged { state -> promptFocused = state.isFocused }
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
-                            sendPrompt()
-                            return@onPreviewKeyEvent true
-                        }
-                        if (activeTab.isNullOrBlank()) return@onPreviewKeyEvent false
-                        if (event.key != Key.DirectionUp && event.key != Key.DirectionDown) return@onPreviewKeyEvent false
-                        val selection = promptValue.selection
-                        val atEdge = selection.start == selection.end &&
-                            (selection.start == 0 || selection.start == promptValue.text.length)
-                        if (!atEdge) return@onPreviewKeyEvent false
-                        val direction = if (event.key == Key.DirectionUp) -1 else 1
-                        val next = viewModel.navigateHistory(activeTab, direction, promptValue.text)
-                        if (next != null) {
-                            promptValue = TextFieldValue(next, selection = androidx.compose.ui.text.TextRange(next.length))
-                        }
-                        true
-                },
-                placeholder = { Text("Type a prompt or /command", style = promptTextStyle) },
-                trailingIcon = {
-                    if (showSpinner) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(if (isCompact) 16.dp else 18.dp)
-                                .testTag(TestTags.TerminalSpinner),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                onSend = { sendPrompt() },
+                onHistoryNavigate = { direction ->
+                    if (activeTab.isNullOrBlank()) return@PromptInput
+                    val selection = promptValue.selection
+                    val atEdge = selection.start == selection.end &&
+                        (selection.start == 0 || selection.start == promptValue.text.length)
+                    if (!atEdge) return@PromptInput
+                    val next = viewModel.navigateHistory(activeTab, direction, promptValue.text)
+                    if (next != null) {
+                        promptValue = TextFieldValue(next, selection = androidx.compose.ui.text.TextRange(next.length))
                     }
                 },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                keyboardActions = KeyboardActions(onSend = { sendPrompt() }),
-                singleLine = false,
+                textStyle = promptTextStyle,
+                placeholder = "Type a prompt or /command",
+                busy = showSpinner,
+                height = promptHeight,
+                maxHeight = promptMaxHeight,
                 maxLines = promptMaxLines,
+                modifier = Modifier.weight(1f),
+                focusRequester = promptFocusRequester,
+                onFocusChanged = { state -> promptFocused = state.isFocused },
             )
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { sendPrompt() },
                 enabled = !state.isBusy,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(6.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 modifier = Modifier
                     .height(promptHeight)
@@ -238,6 +221,108 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PromptInput(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    onSend: () -> Unit,
+    onHistoryNavigate: (Int) -> Unit,
+    textStyle: TextStyle,
+    placeholder: String,
+    busy: Boolean,
+    height: androidx.compose.ui.unit.Dp,
+    maxHeight: androidx.compose.ui.unit.Dp,
+    maxLines: Int,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester,
+    onFocusChanged: (androidx.compose.ui.focus.FocusState) -> Unit,
+) {
+    val shape = RoundedCornerShape(6.dp)
+    val borderColor = MaterialTheme.colorScheme.primary
+    val containerColor = MaterialTheme.colorScheme.surfaceVariant
+    val padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+    var lineCount by remember { mutableStateOf(1) }
+    val heightModifier = if (lineCount <= 1) {
+        Modifier.height(height)
+    } else {
+        Modifier.heightIn(min = height, max = maxHeight)
+    }
+
+    Surface(
+        modifier = modifier
+            .then(heightModifier)
+            .testTag(TestTags.TerminalPrompt)
+            .focusRequester(focusRequester)
+            .onFocusChanged(onFocusChanged)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
+                    onSend()
+                    return@onPreviewKeyEvent true
+                }
+                if (event.key == Key.DirectionUp) {
+                    onHistoryNavigate(-1)
+                    return@onPreviewKeyEvent true
+                }
+                if (event.key == Key.DirectionDown) {
+                    onHistoryNavigate(1)
+                    return@onPreviewKeyEvent true
+                }
+                false
+            },
+        shape = shape,
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            textStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+            onTextLayout = { result -> lineCount = result.lineCount },
+            keyboardOptions = KeyboardOptions(
+                imeAction = ImeAction.Default,
+                capitalization = KeyboardCapitalization.None,
+            ),
+            keyboardActions = KeyboardActions(onSend = { onSend() }),
+            singleLine = false,
+            maxLines = maxLines,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(heightModifier)
+                .padding(padding)
+                .semantics { contentDescription = "Prompt input" },
+            decorationBox = { innerTextField ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (value.text.isEmpty()) {
+                            Text(
+                                text = placeholder,
+                                style = textStyle,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            )
+                        }
+                        innerTextField()
+                    }
+                    if (busy) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .testTag(TestTags.TerminalSpinner),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 
