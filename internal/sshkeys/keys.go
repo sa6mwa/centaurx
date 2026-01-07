@@ -81,6 +81,24 @@ func (s *Store) RotateKey(username, keyType string, bits int) (string, error) {
 	return s.writeKey(username, keyType, bits, true)
 }
 
+// EnsureKey ensures the user has an SSH key and returns the public key.
+func (s *Store) EnsureKey(username, keyType string, bits int) (string, error) {
+	if strings.TrimSpace(username) == "" {
+		return "", errors.New("username is required")
+	}
+	exists, err := s.keyExists(username)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("ssh key stat failed", "user", username, "err", err)
+		}
+		return "", err
+	}
+	if !exists {
+		return s.GenerateKey(username, keyType, bits)
+	}
+	return s.LoadPublicKey(username)
+}
+
 // RemoveKey deletes stored SSH key material for the user.
 func (s *Store) RemoveKey(username string) error {
 	dir := s.userDir(username)
@@ -397,4 +415,16 @@ func (s *Store) privateKeyPath(username string) string {
 
 func (s *Store) publicKeyPath(username string) string {
 	return filepath.Join(s.userDir(username), defaultPubFile)
+}
+
+func (s *Store) keyExists(username string) (bool, error) {
+	path := s.privateKeyPath(username)
+	info, err := os.Stat(path)
+	if err == nil {
+		return !info.IsDir(), nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }

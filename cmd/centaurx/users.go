@@ -251,11 +251,14 @@ func newUsersChpasswd(cfgPath *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			pubKey, err := keyStore.LoadPublicKey(username)
+			pubKey, err := keyStore.EnsureKey(username, sshkeys.KeyTypeEd25519, sshkeys.DefaultRSABits)
 			if err != nil {
-				if !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
+				return err
+			}
+			skelDir := userhome.SkelDir(cfg.StateDir)
+			data := userhome.DefaultTemplateData(cfg)
+			if _, err := userhome.EnsureHome(cfg.StateDir, username, skelDir, data); err != nil {
+				return err
 			}
 			printUserEnrollment(cmd.OutOrStdout(), username, password, generated, "", "", pubKey)
 			return nil

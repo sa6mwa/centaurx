@@ -11,12 +11,16 @@ import (
 func main() {
 	var output string
 	var overwrite bool
+	var seedUsers bool
 	flag.StringVar(&output, "output", ".", "output directory")
 	flag.StringVar(&output, "o", ".", "output directory")
 	flag.BoolVar(&overwrite, "force", false, "overwrite existing files")
+	flag.BoolVar(&seedUsers, "seed-users", false, "seed default users (admin)")
 	flag.Parse()
 
-	files, assets, err := bootstrap.DefaultRepoBundle()
+	files, assets, err := bootstrap.DefaultRepoBundleWithOptions(bootstrap.Options{
+		SeedUsers: seedUsers,
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)

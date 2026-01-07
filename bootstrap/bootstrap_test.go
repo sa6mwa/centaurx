@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"pkt.systems/centaurx/internal/appconfig"
 )
 
 type podmanSpec struct {
@@ -55,6 +57,31 @@ func TestWriteBootstrapPodmanPaths(t *testing.T) {
 	assertHostPath(t, hostPaths, "podman-sock", defaultPodmanSockPath())
 }
 
+func TestDefaultFilesWithoutSeedUsers(t *testing.T) {
+	files, _, err := DefaultFiles()
+	if err != nil {
+		t.Fatalf("DefaultFiles: %v", err)
+	}
+	cfg := readConfig(t, files.ConfigYAML)
+	if len(cfg.Auth.SeedUsers) != 0 {
+		t.Fatalf("expected no seed users, got %d", len(cfg.Auth.SeedUsers))
+	}
+}
+
+func TestDefaultFilesWithSeedUsers(t *testing.T) {
+	files, _, err := DefaultFilesWithOptions(Options{SeedUsers: true})
+	if err != nil {
+		t.Fatalf("DefaultFilesWithOptions: %v", err)
+	}
+	cfg := readConfig(t, files.ConfigYAML)
+	if len(cfg.Auth.SeedUsers) != 1 {
+		t.Fatalf("expected 1 seed user, got %d", len(cfg.Auth.SeedUsers))
+	}
+	if cfg.Auth.SeedUsers[0].Username != "admin" {
+		t.Fatalf("expected seed user admin, got %q", cfg.Auth.SeedUsers[0].Username)
+	}
+}
+
 func readPodmanHostPaths(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 	var spec podmanSpec
@@ -69,6 +96,15 @@ func readPodmanHostPaths(t *testing.T, data []byte) map[string]string {
 		paths[volume.Name] = volume.HostPath.Path
 	}
 	return paths
+}
+
+func readConfig(t *testing.T, data []byte) appconfig.Config {
+	t.Helper()
+	var cfg appconfig.Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	return cfg
 }
 
 func assertHostPath(t *testing.T, paths map[string]string, name, expected string) {

@@ -182,19 +182,24 @@ func DefaultConfig() (Config, error) {
 			AgentDir:     filepath.Join(home, ".centaurx", "state", "ssh", "agent"),
 		},
 		Auth: AuthConfig{
-			UserFile: filepath.Join(home, ".centaurx", "users.json"),
-			SeedUsers: []SeedUser{
-				{
-					Username:     "admin",
-					PasswordHash: "$2a$12$PyjGUD8qnJie1MULQVHJdu9zuS/juh5W5RtDUVHv5HFb.62gNnY/q",
-					TOTPSecret:   "JBSWY3DPEHPK3PXP",
-				},
-			},
+			UserFile:  filepath.Join(home, ".centaurx", "users.json"),
+			SeedUsers: []SeedUser{},
 		},
 		Logging: LoggingConfig{
 			DisableAuditTrails: false,
 		},
 	}, nil
+}
+
+// DefaultSeedUsers returns the default seeded users (admin) when explicitly requested.
+func DefaultSeedUsers() []SeedUser {
+	return []SeedUser{
+		{
+			Username:     "admin",
+			PasswordHash: "$2a$12$PyjGUD8qnJie1MULQVHJdu9zuS/juh5W5RtDUVHv5HFb.62gNnY/q",
+			TOTPSecret:   "JBSWY3DPEHPK3PXP",
+		},
+	}
 }
 
 // DefaultConfigPath returns the standard config path.

@@ -34,6 +34,11 @@ type Assets struct {
 	IncludeSkel   bool
 }
 
+// Options controls optional bootstrap behaviors.
+type Options struct {
+	SeedUsers bool
+}
+
 // BundlePaths lists output locations for generated artifacts.
 type BundlePaths struct {
 	ConfigPath            string
@@ -77,6 +82,11 @@ type templateData struct {
 
 // DefaultFiles returns container-oriented bootstrap files.
 func DefaultFiles() (Files, *Assets, error) {
+	return DefaultFilesWithOptions(Options{})
+}
+
+// DefaultFilesWithOptions returns container-oriented bootstrap files with options.
+func DefaultFilesWithOptions(opts Options) (Files, *Assets, error) {
 	hostCfg, err := appconfig.DefaultConfig()
 	if err != nil {
 		return Files{}, nil, err
@@ -84,6 +94,9 @@ func DefaultFiles() (Files, *Assets, error) {
 	cfg, err := appconfig.DefaultConfig()
 	if err != nil {
 		return Files{}, nil, err
+	}
+	if opts.SeedUsers {
+		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
 	}
 	cfg.ConfigVersion = appconfig.CurrentConfigVersion
 	cfg.RepoRoot = "/cx/repos"
@@ -153,9 +166,17 @@ func DefaultFiles() (Files, *Assets, error) {
 
 // DefaultRepoBundle returns container files intended for repo codegen (no embedded assets).
 func DefaultRepoBundle() (Files, *Assets, error) {
+	return DefaultRepoBundleWithOptions(Options{})
+}
+
+// DefaultRepoBundleWithOptions returns container files intended for repo codegen (no embedded assets).
+func DefaultRepoBundleWithOptions(opts Options) (Files, *Assets, error) {
 	cfg, err := appconfig.DefaultConfig()
 	if err != nil {
 		return Files{}, nil, err
+	}
+	if opts.SeedUsers {
+		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
 	}
 	cfg.ConfigVersion = appconfig.CurrentConfigVersion
 	cfg.RepoRoot = "/cx/repos"
@@ -349,9 +370,17 @@ func WriteFilesWithAssets(outputDir string, files Files, assets *Assets, overwri
 
 // WriteBootstrap writes host config plus container bundle outputs.
 func WriteBootstrap(outputDir string, overwrite bool, imageTag string) (Paths, error) {
+	return WriteBootstrapWithOptions(outputDir, overwrite, imageTag, Options{})
+}
+
+// WriteBootstrapWithOptions writes host config plus container bundle outputs.
+func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string, opts Options) (Paths, error) {
 	hostCfg, err := DefaultHostConfig()
 	if err != nil {
 		return Paths{}, err
+	}
+	if opts.SeedUsers {
+		hostCfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
 	}
 	tag := resolveImageTag(imageTag)
 	hostCfg.Runner.Image = tagImage(defaultRunnerImage, tag)
@@ -364,7 +393,7 @@ func WriteBootstrap(outputDir string, overwrite bool, imageTag string) (Paths, e
 			return Paths{}, fmt.Errorf("file already exists: %s", hostPath)
 		}
 	}
-	bundle, assets, err := DefaultFiles()
+	bundle, assets, err := DefaultFilesWithOptions(opts)
 	if err != nil {
 		return Paths{}, err
 	}
