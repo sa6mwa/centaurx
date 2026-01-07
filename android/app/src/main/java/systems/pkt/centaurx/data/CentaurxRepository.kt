@@ -9,15 +9,15 @@ class CentaurxRepository(
     private val streamClient: StreamClient,
     private val endpointStore: EndpointStore,
     private val fontSizeStore: FontSizeStore,
-) {
-    val endpointFlow: Flow<String> = endpointStore.endpointFlow
-    val fontSizeFlow: Flow<Int> = fontSizeStore.fontSizeFlow
+) : CentaurxClient {
+    override val endpointFlow: Flow<String> = endpointStore.endpointFlow
+    override val fontSizeFlow: Flow<Int> = fontSizeStore.fontSizeFlow
 
-    fun setEndpoint(value: String) {
+    override fun setEndpoint(value: String) {
         endpointStore.setEndpoint(value)
     }
 
-    fun setFontSize(value: Int) {
+    override fun setFontSize(value: Int) {
         fontSizeStore.setFontSize(value)
     }
 
@@ -30,31 +30,31 @@ class CentaurxRepository(
         return raw.toHttpUrlOrNull() ?: throw ApiException("invalid endpoint URL")
     }
 
-    suspend fun login(username: String, password: String, totp: String): LoginResponse {
+    override suspend fun login(username: String, password: String, totp: String): LoginResponse {
         return apiClient.login(username, password, totp)
     }
 
-    suspend fun logout() {
+    override suspend fun logout() {
         apiClient.logout()
     }
 
-    suspend fun me(): LoginResponse {
+    override suspend fun me(): LoginResponse {
         return apiClient.me()
     }
 
-    suspend fun listTabs(): ListTabsResponse {
+    override suspend fun listTabs(): ListTabsResponse {
         return apiClient.listTabs()
     }
 
-    suspend fun activateTab(tabId: String) {
+    override suspend fun activateTab(tabId: String) {
         apiClient.activateTab(tabId)
     }
 
-    suspend fun submitPrompt(tabId: String?, input: String) {
+    override suspend fun submitPrompt(tabId: String?, input: String) {
         apiClient.submitPrompt(tabId, input)
     }
 
-    suspend fun changePassword(
+    override suspend fun changePassword(
         currentPassword: String,
         newPassword: String,
         confirmPassword: String,
@@ -63,27 +63,27 @@ class CentaurxRepository(
         apiClient.changePassword(currentPassword, newPassword, confirmPassword, totp)
     }
 
-    suspend fun uploadCodexAuth(rawJson: String) {
+    override suspend fun uploadCodexAuth(rawJson: String) {
         apiClient.uploadCodexAuth(rawJson)
     }
 
-    suspend fun getHistory(tabId: String?): HistoryResponse {
+    override suspend fun getHistory(tabId: String?): HistoryResponse {
         return apiClient.getHistory(tabId)
     }
 
-    suspend fun getBuffer(tabId: String?, limit: Int? = null): BufferResponse {
+    override suspend fun getBuffer(tabId: String?, limit: Int?): BufferResponse {
         return apiClient.getBuffer(tabId, limit)
     }
 
-    suspend fun getSystemBuffer(limit: Int? = null): SystemBufferResponse {
+    override suspend fun getSystemBuffer(limit: Int?): SystemBufferResponse {
         return apiClient.getSystemBuffer(limit)
     }
 
-    suspend fun appendHistory(tabId: String, entry: String): HistoryResponse {
+    override suspend fun appendHistory(tabId: String, entry: String): HistoryResponse {
         return apiClient.appendHistory(tabId, entry)
     }
 
-    suspend fun streamEvents(lastEventId: Long? = null): Flow<StreamEvent> {
+    override suspend fun streamEvents(lastEventId: Long?): Flow<StreamEvent> {
         return streamClient.streamEvents(baseUrl(), lastEventId)
     }
 }

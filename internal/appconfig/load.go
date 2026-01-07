@@ -59,6 +59,7 @@ func Load(path string) (Config, error) {
 	v.SetDefault("http.addr", cfg.HTTP.Addr)
 	v.SetDefault("http.session_cookie", cfg.HTTP.SessionCookie)
 	v.SetDefault("http.session_ttl_hours", cfg.HTTP.SessionTTLHours)
+	v.SetDefault("http.session_store_path", cfg.HTTP.SessionStorePath)
 	v.SetDefault("http.base_url", cfg.HTTP.BaseURL)
 	v.SetDefault("http.base_path", cfg.HTTP.BasePath)
 	v.SetDefault("http.initial_buffer_lines", cfg.HTTP.InitialBufferLines)
@@ -181,6 +182,7 @@ func expandConfigEnv(cfg *Config) {
 	cfg.SSH.KeyStorePath = expandEnv(cfg.SSH.KeyStorePath)
 	cfg.SSH.KeyDir = expandEnv(cfg.SSH.KeyDir)
 	cfg.SSH.AgentDir = expandEnv(cfg.SSH.AgentDir)
+	cfg.HTTP.SessionStorePath = expandEnv(cfg.HTTP.SessionStorePath)
 	cfg.Auth.UserFile = expandEnv(cfg.Auth.UserFile)
 }
 

@@ -185,6 +185,7 @@ func toHTTPConfig(cfg appconfig.HTTPConfig) httpapi.Config {
 		Addr:               cfg.Addr,
 		SessionCookie:      cfg.SessionCookie,
 		SessionTTLHours:    cfg.SessionTTLHours,
+		SessionStorePath:   cfg.SessionStorePath,
 		BaseURL:            cfg.BaseURL,
 		BasePath:           cfg.BasePath,
 		InitialBufferLines: cfg.InitialBufferLines,

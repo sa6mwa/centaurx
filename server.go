@@ -231,6 +231,8 @@ func (s *compositeServer) Start(ctx context.Context) error {
 		"ssh", s.options.enableSSH,
 		"runner", s.options.enableRunner,
 		"http_addr", s.cfg.HTTP.Addr,
+		"http_base_url", s.cfg.HTTP.BaseURL,
+		"http_base_path", s.cfg.HTTP.BasePath,
 		"ssh_addr", s.cfg.SSH.Addr,
 	)
 	if s.options.enableHTTP && s.httpSrv != nil {

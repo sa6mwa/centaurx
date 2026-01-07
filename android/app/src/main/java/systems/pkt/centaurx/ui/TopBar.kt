@@ -39,7 +39,9 @@ import androidx.compose.ui.window.PopupPositionProvider
 fun TopBar(
     username: String?,
     onShowSettings: () -> Unit,
+    onShowTheme: () -> Unit,
     onShowFontSize: () -> Unit,
+    onCopyAll: () -> Unit,
     onLogout: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -103,15 +105,31 @@ fun TopBar(
                                 },
                                 modifier = Modifier.testTag(TestTags.EndpointButton),
                             )
-                            DropdownMenuItem(
-                                text = { Text("Set font size") },
-                                onClick = {
-                                    menuExpanded = false
-                                    onShowFontSize()
-                                },
-                                modifier = Modifier.testTag(TestTags.FontSizeButton),
-                            )
                             if (!username.isNullOrBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Select theme") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onShowTheme()
+                                    },
+                                    modifier = Modifier.testTag(TestTags.ThemeButton),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Set font size") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onShowFontSize()
+                                    },
+                                    modifier = Modifier.testTag(TestTags.FontSizeButton),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Copy all") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onCopyAll()
+                                    },
+                                    modifier = Modifier.testTag(TestTags.CopyAllButton),
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Logout") },
                                     onClick = {

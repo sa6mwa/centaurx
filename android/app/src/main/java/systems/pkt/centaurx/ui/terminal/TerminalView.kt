@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -88,16 +89,18 @@ fun TerminalView(
         }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier
-            .fillMaxSize()
-            .padding(contentPadding)
-            .testTag(TestTags.TerminalList)
-            .nestedScroll(nestedScrollConnection),
-    ) {
-        itemsIndexed(lines) { _, line ->
-            TerminalLine(line, textStyle)
+    SelectionContainer {
+        LazyColumn(
+            state = listState,
+            modifier = modifier
+                .fillMaxSize()
+                .padding(contentPadding)
+                .testTag(TestTags.TerminalList)
+                .nestedScroll(nestedScrollConnection),
+        ) {
+            itemsIndexed(lines) { _, line ->
+                TerminalLine(line, textStyle)
+            }
         }
     }
 }

@@ -36,6 +36,7 @@ data class UiState(
     val rotateSSHKeyError: String? = null,
     val isBusy: Boolean = false,
     val showSettings: Boolean = false,
+    val showThemePicker: Boolean = false,
     val showFontSize: Boolean = false,
     val showChpasswd: Boolean = false,
     val showCodexAuth: Boolean = false,

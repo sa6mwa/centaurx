@@ -54,7 +54,7 @@ func NewServer(cfg Config, service core.Service, handler CommandHandler, authSto
 		service:    service,
 		cmdHandler: handler,
 		authStore:  authStore,
-		sessions:   newSessionStore(ttl),
+		sessions:   newSessionStore(ttl, cfg.SessionStorePath),
 		hub:        hub,
 		basePath:   normalizeBasePath(cfg.BasePath),
 		baseHref:   buildBaseHref(cfg.BaseURL, cfg.BasePath),

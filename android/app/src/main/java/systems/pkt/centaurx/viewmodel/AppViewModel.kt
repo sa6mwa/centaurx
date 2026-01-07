@@ -15,11 +15,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import systems.pkt.centaurx.data.ApiException
-import systems.pkt.centaurx.data.CentaurxRepository
+import systems.pkt.centaurx.data.CentaurxClient
 import systems.pkt.centaurx.data.StreamEvent
 import systems.pkt.centaurx.data.TabSnapshot
 
-class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
+class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -52,6 +52,10 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
 
     fun showSettings(show: Boolean) {
         _state.update { it.copy(showSettings = show) }
+    }
+
+    fun showThemePicker(show: Boolean) {
+        _state.update { it.copy(showThemePicker = show) }
     }
 
     fun showFontSize(show: Boolean) {
@@ -88,6 +92,10 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
         repository.setFontSize(value)
     }
 
+    fun showStatus(message: String, level: StatusLevel = StatusLevel.Info) {
+        _state.update { it.copy(status = StatusMessage(message, level)) }
+    }
+
     fun login(username: String, password: String, totp: String) {
         viewModelScope.launch {
             setBusy(true)
@@ -121,6 +129,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
             try {
                 repository.logout()
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 setStatus(err.message ?: "logout failed", StatusLevel.Error)
             } finally {
                 stopStream()
@@ -144,6 +153,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                 setStatus("password updated", StatusLevel.Info)
                 showChangePassword(false)
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 _state.update { it.copy(chpasswdError = err.message ?: "password update failed") }
             } finally {
                 setBusy(false)
@@ -160,6 +170,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                 setStatus("codex auth updated", StatusLevel.Info)
                 showCodexAuth(false)
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 _state.update { it.copy(codexAuthError = err.message ?: "codex auth upload failed") }
             } finally {
                 setBusy(false)
@@ -181,6 +192,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                 _state.update { it.copy(status = null) }
                 showRotateSSHKey(false)
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 _state.update { it.copy(rotateSSHKeyError = err.message ?: "ssh key rotation failed") }
             } finally {
                 setBusy(false)
@@ -196,6 +208,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                 ensureHistoryLoaded(tabId)
                 ensureBufferLoaded(tabId)
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 setStatus(err.message ?: "activate failed", StatusLevel.Error)
             }
         }
@@ -220,6 +233,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                     refreshSnapshotFallback()
                 }
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 setStatus(err.message ?: "prompt failed", StatusLevel.Error)
             } finally {
                 setBusy(false)
@@ -237,6 +251,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                     state.copy(history = next)
                 }
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 setStatus(err.message ?: "history failed", StatusLevel.Error)
             }
         }
@@ -252,6 +267,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                     state.copy(buffers = next)
                 }
             } catch (err: ApiException) {
+                if (handleApiException(err)) return@launch
                 setStatus(err.message ?: "buffer failed", StatusLevel.Error)
             }
         }
@@ -329,6 +345,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                     }
                 } catch (err: Exception) {
                     if (!isActive) return@launch
+                    if (err is ApiException && handleApiException(err)) return@launch
                 }
                 if (!isActive) return@launch
                 setStreamDisconnected()
@@ -510,7 +527,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
         }
     }
 
-    private fun resetClientState() {
+    private fun resetClientState(loginError: String? = null) {
         lastSeq = 0
         stopBufferPolling()
         streamReady.value = false
@@ -528,7 +545,7 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
                 showChpasswd = false,
                 showCodexAuth = false,
                 showRotateSSHKey = false,
-                loginError = null,
+                loginError = loginError,
                 chpasswdError = null,
                 codexAuthError = null,
                 rotateSSHKeyError = null,
@@ -538,6 +555,15 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
 
     private fun setStatus(message: String, level: StatusLevel) {
         _state.update { it.copy(status = StatusMessage(message, level)) }
+    }
+
+    private fun handleApiException(err: ApiException): Boolean {
+        if (err.statusCode == 401) {
+            stopStream()
+            resetClientState("session expired")
+            return true
+        }
+        return false
     }
 
     private fun setBusy(busy: Boolean) {
@@ -550,6 +576,8 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
             while (isActive) {
                 try {
                     refreshSnapshotFallback()
+                } catch (err: ApiException) {
+                    if (handleApiException(err)) return@launch
                 } catch (_: Exception) {
                     // keep quiet; stream status already communicates issues
                 }

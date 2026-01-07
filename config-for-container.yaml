@@ -38,6 +38,7 @@ http:
     addr: :27480
     session_cookie: centaurx_session
     session_ttl_hours: 720
+    session_store_path: /cx/state/sessions.json
     base_url: ""
     base_path: ""
     initial_buffer_lines: 200

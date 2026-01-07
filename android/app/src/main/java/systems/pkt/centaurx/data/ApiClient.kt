@@ -147,7 +147,7 @@ class ApiClient(
                     val message = runCatching {
                         CentaurxJson.decodeFromString(ErrorResponse.serializer(), body).error
                     }.getOrNull() ?: "request failed"
-                    throw ApiException(message)
+                    throw ApiException(message, response.code)
                 }
                 if (T::class == Unit::class) {
                     @Suppress("UNCHECKED_CAST")
@@ -163,4 +163,4 @@ class ApiClient(
     }
 }
 
-class ApiException(message: String) : Exception(message)
+class ApiException(message: String, val statusCode: Int? = null) : Exception(message)

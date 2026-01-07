@@ -50,6 +50,18 @@
   const ABOUT_COPYRIGHT_MARKER = '\u0018';
   const ABOUT_LINK_MARKER = '\u0019';
   const tabWindow = window.CentaurxTabWindow || {};
+  const STREAM_SESSION_CHECK_COOLDOWN_MS = 15000;
+  let sessionInvalidated = false;
+  let streamSessionCheckInFlight = false;
+  let streamSessionCheckAfter = 0;
+
+  class ApiError extends Error {
+    constructor(message, status) {
+      super(message);
+      this.name = 'ApiError';
+      this.status = status;
+    }
+  }
 
   const state = {
     tabs: [],
@@ -65,6 +77,9 @@
   };
 
   async function api(path, options = {}) {
+    if (sessionInvalidated && path !== 'api/login') {
+      throw new ApiError('session expired', 401);
+    }
     const res = await fetch(path, {
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -72,7 +87,12 @@
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'request failed' }));
-      throw new Error(err.error || 'request failed');
+      const message = err.error || 'request failed';
+      const apiErr = new ApiError(message, res.status);
+      if (apiErr.status === 401 && path !== 'api/login') {
+        handleInvalidSession('session expired');
+      }
+      throw apiErr;
     }
     return res.json();
   }
@@ -80,12 +100,34 @@
   async function checkSession() {
     try {
       const data = await api('api/me');
+      clearSessionInvalidated();
       state.user = data.username;
       showTerminal();
       startStream();
     } catch (err) {
       showLogin();
     }
+  }
+
+  function handleInvalidSession(message) {
+    if (sessionInvalidated) return;
+    const hadSession = Boolean(state.user);
+    sessionInvalidated = true;
+    stopStream();
+    resetClientState();
+    showLogin();
+    if (hadSession && loginError) {
+      loginError.textContent = message || 'session expired';
+    }
+  }
+
+  function clearSessionInvalidated() {
+    sessionInvalidated = false;
+    if (loginError) loginError.textContent = '';
+  }
+
+  function isSessionError(err) {
+    return err && err.status === 401;
   }
 
   function showLogin() {
@@ -213,6 +255,21 @@
     }
   }
 
+  async function checkStreamSession() {
+    if (sessionInvalidated) return;
+    const now = Date.now();
+    if (streamSessionCheckInFlight || now < streamSessionCheckAfter) return;
+    streamSessionCheckInFlight = true;
+    try {
+      await api('api/me');
+    } catch (err) {
+      if (isSessionError(err)) return;
+    } finally {
+      streamSessionCheckInFlight = false;
+      streamSessionCheckAfter = Date.now() + STREAM_SESSION_CHECK_COOLDOWN_MS;
+    }
+  }
+
   function resetClientState() {
     state.tabs = [];
     state.activeTab = null;
@@ -250,7 +307,7 @@
       entry.index = -1;
       entry.loaded = true;
     } catch (err) {
-      reportError(err.message);
+      reportError(err.message, err);
     }
     return entry;
   }
@@ -268,7 +325,7 @@
       entry.entries = data.entries || data.Entries || [];
       entry.loaded = true;
     } catch (err) {
-      reportError(err.message);
+      reportError(err.message, err);
     }
     return prevLast !== value;
   }
@@ -364,9 +421,12 @@
     try {
       await api('api/logout', { method: 'POST' });
     } catch (err) {
-      reportError(err.message);
-      return err;
+      if (!isSessionError(err)) {
+        reportError(err.message, err);
+        return err;
+      }
     }
+    sessionInvalidated = false;
     stopStream();
     resetClientState();
     showLogin();
@@ -383,7 +443,8 @@
     }
   }
 
-  function reportError(message) {
+  function reportError(message, err) {
+    if (sessionInvalidated || isSessionError(err)) return;
     const text = message || 'request failed';
     setStatus(text, 'error');
     const line = `error: ${text}`;
@@ -408,6 +469,7 @@
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      clearSessionInvalidated();
       state.user = data.username;
       showTerminal();
       startStream();
@@ -725,7 +787,7 @@
     } catch (err) {
       promptInput.value = raw;
       resizePrompt();
-      reportError(err.message);
+      reportError(err.message, err);
     } finally {
       stopBusy();
     }
@@ -778,7 +840,7 @@
   });
 
   function startStream() {
-    if (state.eventSource) return;
+    if (state.eventSource || sessionInvalidated || !state.user) return;
     state.eventSource = new EventSource('api/stream');
     state.eventSource.onmessage = (e) => {
       if (!e.data) return;
@@ -788,6 +850,7 @@
     state.eventSource.onerror = () => {
       console.warn('stream error');
       setStatus('stream disconnected', 'warn');
+      void checkStreamSession();
     };
   }
 
@@ -816,7 +879,7 @@
       }
       focusPrompt();
     } catch (err) {
-      reportError(err.message);
+      reportError(err.message, err);
     }
   }
 
@@ -941,7 +1004,7 @@
       }
       focusPrompt();
     } catch (err) {
-      reportError(err.message);
+      reportError(err.message, err);
     }
   }
 
@@ -985,7 +1048,7 @@
           }
           focusPrompt();
         } catch (err) {
-          reportError(err.message);
+          reportError(err.message, err);
         }
       };
       tabsEl.appendChild(btn);

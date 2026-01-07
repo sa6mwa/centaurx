@@ -37,6 +37,7 @@ type Assets struct {
 // Options controls optional bootstrap behaviors.
 type Options struct {
 	SeedUsers bool
+	Overrides []ConfigOverride
 }
 
 // BundlePaths lists output locations for generated artifacts.
@@ -69,6 +70,25 @@ const (
 	defaultHostConfigTemplate = "${HOME}/.centaurx/config-for-container.yaml"
 	defaultPodmanSockTemplate = "/run/user/${UID}/podman/podman.sock"
 )
+
+// OverrideTarget scopes bootstrap config overrides.
+type OverrideTarget string
+
+const (
+	// OverrideBoth applies overrides to both host and container configs.
+	OverrideBoth OverrideTarget = "both"
+	// OverrideHost applies overrides only to the host config.
+	OverrideHost OverrideTarget = "host"
+	// OverrideContainer applies overrides only to the container config.
+	OverrideContainer OverrideTarget = "container"
+)
+
+// ConfigOverride applies a config path override to generated configs.
+type ConfigOverride struct {
+	Target OverrideTarget
+	Path   string
+	Value  any
+}
 
 type templateData struct {
 	ConfigFile        string
@@ -119,6 +139,7 @@ func DefaultFilesWithOptions(opts Options) (Files, *Assets, error) {
 	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
 	cfg.SSH.AgentDir = "/cx/state/ssh/agent"
 	cfg.Auth.UserFile = "/cx/state/users.json"
+	cfg.HTTP.SessionStorePath = "/cx/state/sessions.json"
 
 	configYAML, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -199,6 +220,7 @@ func DefaultRepoBundleWithOptions(opts Options) (Files, *Assets, error) {
 	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
 	cfg.SSH.AgentDir = "/cx/state/ssh/agent"
 	cfg.Auth.UserFile = "/cx/state/users.json"
+	cfg.HTTP.SessionStorePath = "/cx/state/sessions.json"
 
 	configYAML, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -384,6 +406,13 @@ func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string
 	}
 	tag := resolveImageTag(imageTag)
 	hostCfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	if overrides := filterOverrides(opts.Overrides, OverrideHost); len(overrides) > 0 {
+		var err error
+		hostCfg, err = applyOverrides(hostCfg, overrides)
+		if err != nil {
+			return Paths{}, err
+		}
+	}
 	hostPath, err := appconfig.DefaultConfigPath()
 	if err != nil {
 		return Paths{}, err
@@ -405,6 +434,12 @@ func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string
 	hostRepoDir := filepath.Join(rootDir, "repos")
 	if bundle.ConfigYAML, err = overrideContainerConfig(bundle.ConfigYAML, hostStateDir, hostRepoDir, tag); err != nil {
 		return Paths{}, err
+	}
+	if overrides := filterOverrides(opts.Overrides, OverrideContainer); len(overrides) > 0 {
+		bundle.ConfigYAML, err = applyOverridesToYAML(bundle.ConfigYAML, overrides)
+		if err != nil {
+			return Paths{}, err
+		}
 	}
 	tplData := templateData{
 		ConfigFile:        containerConfigName,
@@ -609,6 +644,106 @@ func overrideContainerConfig(configYAML []byte, hostStateDir, hostRepoDir, tag s
 		cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
 	}
 	return yaml.Marshal(cfg)
+}
+
+func applyOverrides(cfg appconfig.Config, overrides []ConfigOverride) (appconfig.Config, error) {
+	if len(overrides) == 0 {
+		return cfg, nil
+	}
+	raw, err := yaml.Marshal(cfg)
+	if err != nil {
+		return cfg, err
+	}
+	updated, err := applyOverridesToYAML(raw, overrides)
+	if err != nil {
+		return cfg, err
+	}
+	var next appconfig.Config
+	if err := yaml.Unmarshal(updated, &next); err != nil {
+		return cfg, err
+	}
+	return next, nil
+}
+
+func applyOverridesToYAML(configYAML []byte, overrides []ConfigOverride) ([]byte, error) {
+	if len(overrides) == 0 {
+		return configYAML, nil
+	}
+	var data map[string]any
+	if err := yaml.Unmarshal(configYAML, &data); err != nil {
+		return nil, err
+	}
+	for _, override := range overrides {
+		if err := setOverrideValue(data, override.Path, override.Value); err != nil {
+			return nil, err
+		}
+	}
+	return yaml.Marshal(data)
+}
+
+func filterOverrides(overrides []ConfigOverride, target OverrideTarget) []ConfigOverride {
+	if len(overrides) == 0 {
+		return nil
+	}
+	filtered := make([]ConfigOverride, 0, len(overrides))
+	for _, override := range overrides {
+		if override.Target == OverrideBoth || override.Target == target {
+			filtered = append(filtered, override)
+		}
+	}
+	return filtered
+}
+
+func setOverrideValue(root map[string]any, path string, value any) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("config override path is required")
+	}
+	parts := strings.Split(path, ".")
+	node := root
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return fmt.Errorf("invalid config override path %q", path)
+		}
+		if i == len(parts)-1 {
+			node[part] = value
+			return nil
+		}
+		next, ok := node[part]
+		if !ok || next == nil {
+			child := map[string]any{}
+			node[part] = child
+			node = child
+			continue
+		}
+		child, ok := toStringMap(next)
+		if !ok {
+			return fmt.Errorf("config override %q: %q is not a map", path, part)
+		}
+		node[part] = child
+		node = child
+	}
+	return nil
+}
+
+func toStringMap(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case map[any]any:
+		out := make(map[string]any, len(typed))
+		for key, val := range typed {
+			ks, ok := key.(string)
+			if !ok {
+				return nil, false
+			}
+			out[ks] = val
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func resolveImageTag(override string) string {

@@ -45,6 +45,10 @@ class StreamClient(private val httpClient: OkHttpClient) {
                 t: Throwable?,
                 response: okhttp3.Response?,
             ) {
+                if (response?.code == 401) {
+                    close(ApiException("invalid session", response.code))
+                    return
+                }
                 close(t)
             }
 

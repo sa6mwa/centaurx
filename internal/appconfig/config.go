@@ -64,6 +64,7 @@ type HTTPConfig struct {
 	Addr               string `mapstructure:"addr" yaml:"addr"`
 	SessionCookie      string `mapstructure:"session_cookie" yaml:"session_cookie"`
 	SessionTTLHours    int    `mapstructure:"session_ttl_hours" yaml:"session_ttl_hours"`
+	SessionStorePath   string `mapstructure:"session_store_path" yaml:"session_store_path"`
 	BaseURL            string `mapstructure:"base_url" yaml:"base_url"`
 	BasePath           string `mapstructure:"base_path" yaml:"base_path"`
 	InitialBufferLines int    `mapstructure:"initial_buffer_lines" yaml:"initial_buffer_lines"`
@@ -170,6 +171,7 @@ func DefaultConfig() (Config, error) {
 			Addr:               ":27480",
 			SessionCookie:      "centaurx_session",
 			SessionTTLHours:    720,
+			SessionStorePath:   filepath.Join(stateDir, "sessions.json"),
 			BaseURL:            "",
 			BasePath:           "",
 			InitialBufferLines: 200,

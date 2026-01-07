@@ -8,18 +8,25 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import systems.pkt.centaurx.ui.dialogs.ChangePasswordDialog
 import systems.pkt.centaurx.ui.dialogs.CodexAuthDialog
 import systems.pkt.centaurx.ui.dialogs.EndpointDialog
 import systems.pkt.centaurx.ui.dialogs.FontSizeDialog
 import systems.pkt.centaurx.ui.dialogs.RotateSSHKeyDialog
+import systems.pkt.centaurx.ui.dialogs.ThemeDialog
 import systems.pkt.centaurx.ui.theme.CentaurxTheme
 import systems.pkt.centaurx.viewmodel.AppViewModel
+import systems.pkt.centaurx.viewmodel.StatusLevel
 
 @Composable
 fun CentaurxApp(viewModel: AppViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
+    val activeTabId = state.activeTabId
+    val activeBuffer = if (!activeTabId.isNullOrBlank()) state.buffers[activeTabId].orEmpty() else emptyList()
 
     CentaurxTheme(themeName = state.theme) {
         Surface(color = MaterialTheme.colorScheme.background) {
@@ -27,7 +34,16 @@ fun CentaurxApp(viewModel: AppViewModel) {
                 TopBar(
                     username = state.username,
                     onShowSettings = { viewModel.showSettings(true) },
+                    onShowTheme = { viewModel.showThemePicker(true) },
                     onShowFontSize = { viewModel.showFontSize(true) },
+                    onCopyAll = {
+                        if (activeBuffer.isEmpty()) {
+                            viewModel.showStatus("no output to copy", StatusLevel.Warn)
+                            return@TopBar
+                        }
+                        clipboard.setText(AnnotatedString(activeBuffer.joinToString("\n")))
+                        viewModel.showStatus("copied ${activeBuffer.size} lines", StatusLevel.Info)
+                    },
                     onLogout = { viewModel.logout() },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
@@ -46,6 +62,17 @@ fun CentaurxApp(viewModel: AppViewModel) {
                 onSave = { value ->
                     viewModel.updateEndpoint(value)
                     viewModel.showSettings(false)
+                },
+            )
+        }
+
+        if (state.showThemePicker) {
+            ThemeDialog(
+                currentTheme = state.theme,
+                onDismiss = { viewModel.showThemePicker(false) },
+                onSave = { theme ->
+                    viewModel.showThemePicker(false)
+                    viewModel.submitPrompt(state.activeTabId, "/theme $theme")
                 },
             )
         }

@@ -2,9 +2,9 @@ package systems.pkt.centaurx.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import systems.pkt.centaurx.data.CentaurxRepository
+import systems.pkt.centaurx.data.CentaurxClient
 
-class AppViewModelFactory(private val repository: CentaurxRepository) : ViewModelProvider.Factory {
+class AppViewModelFactory(private val repository: CentaurxClient) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(AppViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")

@@ -8,6 +8,7 @@ You are collaborating with a highly opinionated Go architect. Optimize for Go-id
 3. Get alignment before writing significant code.
 4. Implement in small, reviewable steps.
 5. Run quality gates (see below).
+6. Git commit messages must follow Conventional Commits: https://www.conventionalcommits.org/en/v1.0.0/
 
 ## Refactors (strong preference)
 - Avoid feature flags for refactoring tasks.
@@ -74,4 +75,3 @@ linters:
       - linters: [staticcheck]
         text: "S1009"
 ```
-
