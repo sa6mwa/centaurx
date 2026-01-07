@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
@@ -29,10 +31,11 @@ type User struct {
 
 // Store manages users stored on disk.
 type Store struct {
-	path  string
-	mu    sync.RWMutex
-	users map[string]User
-	log   pslog.Logger
+	path      string
+	mu        sync.RWMutex
+	users     map[string]User
+	fileState fileState
+	log       pslog.Logger
 }
 
 // NewStore loads or seeds the user store.
@@ -64,6 +67,9 @@ func NewStoreWithLogger(path string, seeds []appconfig.SeedUser, logger pslog.Lo
 
 // Authenticate verifies username, password, and totp.
 func (s *Store) Authenticate(username, password, totpCode string) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	s.mu.RLock()
 	user, ok := s.users[username]
 	s.mu.RUnlock()
@@ -96,6 +102,9 @@ func (s *Store) ChangePassword(username, currentPassword, totpCode, newPassword 
 
 // ValidateTOTP verifies the stored TOTP secret for a user.
 func (s *Store) ValidateTOTP(username string, totpCode string) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	normalized, err := validateUsername(username)
 	if err != nil {
 		return err
@@ -114,6 +123,9 @@ func (s *Store) ValidateTOTP(username string, totpCode string) error {
 
 // AddLoginPubKey adds a login public key for a user and returns its 1-based index.
 func (s *Store) AddLoginPubKey(userID schema.UserID, pubKey string) (int, error) {
+	if err := s.refreshIfNeeded(); err != nil {
+		return 0, err
+	}
 	username, err := validateUsername(string(userID))
 	if err != nil {
 		return 0, err
@@ -149,6 +161,9 @@ func (s *Store) AddLoginPubKey(userID schema.UserID, pubKey string) (int, error)
 
 // ListLoginPubKeys returns the user's login public keys.
 func (s *Store) ListLoginPubKeys(userID schema.UserID) ([]string, error) {
+	if err := s.refreshIfNeeded(); err != nil {
+		return nil, err
+	}
 	username, err := validateUsername(string(userID))
 	if err != nil {
 		return nil, err
@@ -164,6 +179,9 @@ func (s *Store) ListLoginPubKeys(userID schema.UserID) ([]string, error) {
 
 // RemoveLoginPubKey removes the login public key at the provided 1-based index.
 func (s *Store) RemoveLoginPubKey(userID schema.UserID, index int) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	username, err := validateUsername(string(userID))
 	if err != nil {
 		return err
@@ -196,6 +214,9 @@ func (s *Store) RemoveLoginPubKey(userID schema.UserID, index int) error {
 
 // HasLoginPubKey reports whether the provided key is authorized for the user.
 func (s *Store) HasLoginPubKey(userID schema.UserID, key ssh.PublicKey) (bool, error) {
+	if err := s.refreshIfNeeded(); err != nil {
+		return false, err
+	}
 	username, err := validateUsername(string(userID))
 	if err != nil {
 		return false, err
@@ -216,6 +237,11 @@ func (s *Store) HasLoginPubKey(userID schema.UserID, key ssh.PublicKey) (bool, e
 
 // LoadUsers returns a snapshot of users.
 func (s *Store) LoadUsers() []User {
+	if err := s.refreshIfNeeded(); err != nil {
+		if s.log != nil {
+			s.log.Warn("auth store refresh failed", "err", err)
+		}
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	users := make([]User, 0, len(s.users))
@@ -227,6 +253,9 @@ func (s *Store) LoadUsers() []User {
 
 // AddUser inserts a new user and persists the store.
 func (s *Store) AddUser(user User) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	username, err := validateUsername(user.Username)
 	if err != nil {
 		return err
@@ -252,6 +281,9 @@ func (s *Store) AddUser(user User) error {
 
 // UpdatePassword replaces the stored password hash.
 func (s *Store) UpdatePassword(username, passwordHash string) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	normalized, err := validateUsername(username)
 	if err != nil {
 		return err
@@ -282,6 +314,9 @@ func (s *Store) UpdatePassword(username, passwordHash string) error {
 
 // UpdateTOTP replaces the stored TOTP secret.
 func (s *Store) UpdateTOTP(username, secret string) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	normalized, err := validateUsername(username)
 	if err != nil {
 		return err
@@ -312,6 +347,9 @@ func (s *Store) UpdateTOTP(username, secret string) error {
 
 // DeleteUser removes a user.
 func (s *Store) DeleteUser(username string) error {
+	if err := s.refreshIfNeeded(); err != nil {
+		return err
+	}
 	normalized, err := validateUsername(username)
 	if err != nil {
 		return err
@@ -381,36 +419,7 @@ func (s *Store) ensureFile(seeds []appconfig.SeedUser) error {
 }
 
 func (s *Store) load() error {
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		if s.log != nil {
-			s.log.Warn("auth store load failed", "err", err)
-		}
-		return err
-	}
-	var users []User
-	if err := json.Unmarshal(data, &users); err != nil {
-		if s.log != nil {
-			s.log.Warn("auth store load failed", "err", err)
-		}
-		return err
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.users = make(map[string]User, len(users))
-	for _, user := range users {
-		if _, err := validateUsername(user.Username); err != nil {
-			if s.log != nil {
-				s.log.Warn("auth store load failed", "err", err)
-			}
-			return err
-		}
-		s.users[user.Username] = user
-	}
-	if s.log != nil {
-		s.log.Debug("auth store load ok", "users", len(users))
-	}
-	return nil
+	return s.loadFromDisk()
 }
 
 func validateUsername(username string) (string, error) {
@@ -486,8 +495,99 @@ func (s *Store) saveLocked() error {
 		}
 		return err
 	}
+	if info, err := os.Stat(s.path); err == nil {
+		s.fileState = fileStateFromInfo(info)
+	} else if s.log != nil {
+		s.log.Warn("auth store save failed to stat", "err", err)
+	}
 	if s.log != nil {
 		s.log.Debug("auth store save ok", "users", len(users))
+	}
+	return nil
+}
+
+type fileState struct {
+	modTime time.Time
+	size    int64
+	inode   uint64
+	dev     uint64
+}
+
+func fileStateFromInfo(info os.FileInfo) fileState {
+	state := fileState{
+		modTime: info.ModTime(),
+		size:    info.Size(),
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		state.inode = stat.Ino
+		state.dev = stat.Dev
+	}
+	return state
+}
+
+func (s fileState) equal(other fileState) bool {
+	return s.size == other.size &&
+		s.modTime.Equal(other.modTime) &&
+		s.inode == other.inode &&
+		s.dev == other.dev
+}
+
+func (s *Store) refreshIfNeeded() error {
+	info, err := os.Stat(s.path)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("auth store stat failed", "err", err)
+		}
+		return err
+	}
+	latest := fileStateFromInfo(info)
+	s.mu.RLock()
+	current := s.fileState
+	s.mu.RUnlock()
+	if current.equal(latest) {
+		return nil
+	}
+	return s.loadFromDisk()
+}
+
+func (s *Store) loadFromDisk() error {
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("auth store load failed", "err", err)
+		}
+		return err
+	}
+	var users []User
+	if err := json.Unmarshal(data, &users); err != nil {
+		if s.log != nil {
+			s.log.Warn("auth store load failed", "err", err)
+		}
+		return err
+	}
+	info, err := os.Stat(s.path)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("auth store load failed", "err", err)
+		}
+		return err
+	}
+	next := make(map[string]User, len(users))
+	for _, user := range users {
+		if _, err := validateUsername(user.Username); err != nil {
+			if s.log != nil {
+				s.log.Warn("auth store load failed", "err", err)
+			}
+			return err
+		}
+		next[user.Username] = user
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.users = next
+	s.fileState = fileStateFromInfo(info)
+	if s.log != nil {
+		s.log.Debug("auth store load ok", "users", len(users))
 	}
 	return nil
 }

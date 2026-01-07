@@ -59,7 +59,7 @@ Defaults (from `internal/appconfig`):
 - SSH: `:27422`
 - Repo root: `~/.centaurx/repos`
 - State dir: `~/.centaurx/state`
-- Users file: `~/.centaurx/users.json`
+- Users file: `${state_dir}/users.json`
 
 ### Bootstrap
 `centaurx bootstrap` writes:
@@ -218,7 +218,7 @@ Repo operations:
 ## Authentication and user management
 
 ### HTTP auth
-- Users are stored in `users.json` with `bcrypt` password hashes and TOTP secrets.
+- Users are stored in `${state_dir}/users.json` with `bcrypt` password hashes and TOTP secrets.
 - `POST /api/login` validates username, password, and TOTP code.
 - Session cookie is `HttpOnly` and uses an in-memory session store with TTL.
 

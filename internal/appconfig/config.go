@@ -120,6 +120,7 @@ func DefaultConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	stateDir := filepath.Join(home, ".centaurx", "state")
 	uid := os.Getuid()
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir == "" {
@@ -128,7 +129,7 @@ func DefaultConfig() (Config, error) {
 	return Config{
 		ConfigVersion: CurrentConfigVersion,
 		RepoRoot:      filepath.Join(home, ".centaurx", "repos"),
-		StateDir:      filepath.Join(home, ".centaurx", "state"),
+		StateDir:      stateDir,
 		Models: ModelsConfig{
 			Default: "gpt-5.2-codex",
 			Allowed: []string{"gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini"},
@@ -139,11 +140,11 @@ func DefaultConfig() (Config, error) {
 		Runner: RunnerConfig{
 			Runtime:                  "podman",
 			Image:                    "docker.io/pktsystems/centaurxrunner:latest",
-			SockDir:                  filepath.Join(home, ".centaurx", "state", "runner"),
+			SockDir:                  filepath.Join(stateDir, "runner"),
 			RepoRoot:                 "/repos",
 			HostRepoRoot:             "",
 			HostStateDir:             "",
-			SocketPath:               filepath.Join(home, ".centaurx", "state", "runner.sock"),
+			SocketPath:               filepath.Join(stateDir, "runner.sock"),
 			Binary:                   "codex",
 			Args:                     []string{},
 			Env:                      map[string]string{},
@@ -177,12 +178,12 @@ func DefaultConfig() (Config, error) {
 		SSH: SSHConfig{
 			Addr:         ":27422",
 			HostKeyPath:  filepath.Join(home, ".centaurx", "ssh_host_key"),
-			KeyStorePath: filepath.Join(home, ".centaurx", "state", "ssh", "keys.bundle"),
-			KeyDir:       filepath.Join(home, ".centaurx", "state", "ssh", "keys"),
-			AgentDir:     filepath.Join(home, ".centaurx", "state", "ssh", "agent"),
+			KeyStorePath: filepath.Join(stateDir, "ssh", "keys.bundle"),
+			KeyDir:       filepath.Join(stateDir, "ssh", "keys"),
+			AgentDir:     filepath.Join(stateDir, "ssh", "agent"),
 		},
 		Auth: AuthConfig{
-			UserFile:  filepath.Join(home, ".centaurx", "users.json"),
+			UserFile:  filepath.Join(stateDir, "users.json"),
 			SeedUsers: []SeedUser{},
 		},
 		Logging: LoggingConfig{

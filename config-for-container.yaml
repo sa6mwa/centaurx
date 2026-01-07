@@ -11,7 +11,7 @@ service:
     buffer_max_lines: 5000
 runner:
     runtime: podman
-    image: docker.io/pktsystems/centaurxrunner:v0.2.0
+    image: docker.io/pktsystems/centaurxrunner:v0.2.1-0.20260107132109-9c7a813f2d2e
     sock_dir: /cx/state/runner
     repo_root: /cx/repos
     host_repo_root: ${HOME}/.centaurx/repos
