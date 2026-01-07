@@ -3,7 +3,6 @@ package systems.pkt.centaurx.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -54,10 +53,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import systems.pkt.centaurx.MaxTerminalFontSizeSp
+import systems.pkt.centaurx.MinTerminalFontSizeSp
 import kotlinx.coroutines.delay
 import systems.pkt.centaurx.data.TabSnapshot
 import systems.pkt.centaurx.data.TabStatus
@@ -128,120 +127,115 @@ fun TerminalScreen(state: UiState, viewModel: AppViewModel) {
     val promptMaxHeight = if (isCompact) 130.dp else 160.dp
     val promptMaxLines = if (isCompact) 4 else 6
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val terminalTextStyle = rememberTerminalTextStyle(
-            width = maxWidth - screenPadding * 2,
-            contentPadding = terminalPadding,
-        )
-        val promptTextStyle = terminalTextStyle
-        val sendButtonWidth = if (isCompact) 76.dp else 88.dp
+    val terminalTextStyle = rememberTerminalTextStyle(fontSizeSp = state.fontSizeSp)
+    val promptTextStyle = terminalTextStyle
+    val sendButtonWidth = if (isCompact) 76.dp else 88.dp
 
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = screenPadding)
+            .padding(top = if (isCompact) 6.dp else 8.dp),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+    ) {
+        TabsRow(
+            tabs = state.tabs,
+            activeTabId = activeTab,
+            onSelect = viewModel::activateTab,
+            compact = isCompact,
+        )
+        StatusBanner(status = state.status)
+        Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = screenPadding)
-                .padding(top = if (isCompact) 6.dp else 8.dp),
-            verticalArrangement = Arrangement.spacedBy(spacing),
+                .fillMaxWidth()
+                .weight(1f),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)),
         ) {
-            TabsRow(
-                tabs = state.tabs,
-                activeTabId = activeTab,
-                onSelect = viewModel::activateTab,
-                compact = isCompact,
+            TerminalView(
+                lines = lines,
+                textStyle = terminalTextStyle,
+                contentPadding = terminalPadding,
+                resetScrollKey = activeTab ?: "system",
+                forceScrollToBottom = promptFocused,
             )
-            StatusBanner(status = state.status)
-            Surface(
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(bottom = if (isCompact) 6.dp else 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = promptValue,
+                onValueChange = {
+                    promptValue = it
+                    if (!activeTab.isNullOrBlank()) {
+                        viewModel.resetHistoryIndex(activeTab)
+                    }
+                },
+                textStyle = promptTextStyle,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)),
-            ) {
-                TerminalView(
-                    lines = lines,
-                    textStyle = terminalTextStyle,
-                    contentPadding = terminalPadding,
-                    resetScrollKey = activeTab ?: "system",
-                    forceScrollToBottom = promptFocused,
-                )
-            }
-            Row(
+                    .weight(1f)
+                    .heightIn(min = promptHeight, max = promptMaxHeight)
+                    .testTag(TestTags.TerminalPrompt)
+                    .focusRequester(promptFocusRequester)
+                    .onFocusChanged { state -> promptFocused = state.isFocused }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
+                            sendPrompt()
+                            return@onPreviewKeyEvent true
+                        }
+                        if (activeTab.isNullOrBlank()) return@onPreviewKeyEvent false
+                        if (event.key != Key.DirectionUp && event.key != Key.DirectionDown) return@onPreviewKeyEvent false
+                        val selection = promptValue.selection
+                        val atEdge = selection.start == selection.end &&
+                            (selection.start == 0 || selection.start == promptValue.text.length)
+                        if (!atEdge) return@onPreviewKeyEvent false
+                        val direction = if (event.key == Key.DirectionUp) -1 else 1
+                        val next = viewModel.navigateHistory(activeTab, direction, promptValue.text)
+                        if (next != null) {
+                            promptValue = TextFieldValue(next, selection = androidx.compose.ui.text.TextRange(next.length))
+                        }
+                        true
+                },
+                placeholder = { Text("Type a prompt or /command", style = promptTextStyle) },
+                trailingIcon = {
+                    if (showSpinner) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(if (isCompact) 16.dp else 18.dp)
+                                .testTag(TestTags.TerminalSpinner),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                keyboardActions = KeyboardActions(onSend = { sendPrompt() }),
+                singleLine = false,
+                maxLines = promptMaxLines,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = { sendPrompt() },
+                enabled = !state.isBusy,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(bottom = if (isCompact) 6.dp else 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .height(promptHeight)
+                    .width(sendButtonWidth)
+                    .testTag(TestTags.TerminalSend),
             ) {
-                OutlinedTextField(
-                    value = promptValue,
-                    onValueChange = {
-                        promptValue = it
-                        if (!activeTab.isNullOrBlank()) {
-                            viewModel.resetHistoryIndex(activeTab)
-                        }
-                    },
-                    textStyle = promptTextStyle,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = promptHeight, max = promptMaxHeight)
-                        .testTag(TestTags.TerminalPrompt)
-                        .focusRequester(promptFocusRequester)
-                        .onFocusChanged { state -> promptFocused = state.isFocused }
-                        .onPreviewKeyEvent { event ->
-                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            if ((event.key == Key.Enter || event.key == Key.NumPadEnter) && event.isCtrlPressed) {
-                                sendPrompt()
-                                return@onPreviewKeyEvent true
-                            }
-                            if (activeTab.isNullOrBlank()) return@onPreviewKeyEvent false
-                            if (event.key != Key.DirectionUp && event.key != Key.DirectionDown) return@onPreviewKeyEvent false
-                            val selection = promptValue.selection
-                            val atEdge = selection.start == selection.end &&
-                                (selection.start == 0 || selection.start == promptValue.text.length)
-                            if (!atEdge) return@onPreviewKeyEvent false
-                            val direction = if (event.key == Key.DirectionUp) -1 else 1
-                            val next = viewModel.navigateHistory(activeTab, direction, promptValue.text)
-                            if (next != null) {
-                                promptValue = TextFieldValue(next, selection = androidx.compose.ui.text.TextRange(next.length))
-                            }
-                            true
-                    },
-                    placeholder = { Text("Type a prompt or /command", style = promptTextStyle) },
-                    trailingIcon = {
-                        if (showSpinner) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .size(if (isCompact) 16.dp else 18.dp)
-                                    .testTag(TestTags.TerminalSpinner),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                    keyboardActions = KeyboardActions(onSend = { sendPrompt() }),
-                    singleLine = false,
-                    maxLines = promptMaxLines,
+                Text(
+                    text = "Send",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = { sendPrompt() },
-                    enabled = !state.isBusy,
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .height(promptHeight)
-                        .width(sendButtonWidth)
-                        .testTag(TestTags.TerminalSend),
-                ) {
-                    Text(
-                        text = "Send",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1,
-                    )
-                }
             }
         }
     }
@@ -361,28 +355,13 @@ private fun TabNavButton(
 
 @Composable
 private fun rememberTerminalTextStyle(
-    width: androidx.compose.ui.unit.Dp,
-    contentPadding: androidx.compose.ui.unit.Dp,
-    targetColumns: Int = 80,
+    fontSizeSp: Int,
 ): TextStyle {
-    val measurer = rememberTextMeasurer()
     val baseStyle = MaterialTheme.typography.bodyMedium
-    val baseFontSize = 12.sp
-    val sample = remember { "M".repeat(targetColumns) }
-    val baseWidthPx = remember(baseStyle.fontFamily) {
-        measurer.measure(
-            AnnotatedString(sample),
-            style = baseStyle.copy(fontSize = baseFontSize),
-        ).size.width.toFloat()
-    }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val rawAvailablePx = with(density) { (width - contentPadding * 2).toPx() }
-    val availablePx = rawAvailablePx.coerceAtLeast(1f)
-    val scale = if (baseWidthPx > 0f) availablePx / baseWidthPx else 1f
-    val targetSize = (baseFontSize.value * scale).coerceIn(9f, 12f)
+    val size = fontSizeSp.coerceIn(MinTerminalFontSizeSp, MaxTerminalFontSizeSp).sp
     return baseStyle.copy(
-        fontSize = targetSize.sp,
-        lineHeight = (targetSize * 1.25f).sp,
+        fontSize = size,
+        lineHeight = (size.value * 1.25f).sp,
         fontWeight = FontWeight.Normal,
     )
 }

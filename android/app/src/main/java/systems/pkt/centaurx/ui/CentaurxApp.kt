@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import systems.pkt.centaurx.ui.dialogs.ChangePasswordDialog
 import systems.pkt.centaurx.ui.dialogs.CodexAuthDialog
 import systems.pkt.centaurx.ui.dialogs.EndpointDialog
+import systems.pkt.centaurx.ui.dialogs.FontSizeDialog
 import systems.pkt.centaurx.ui.dialogs.RotateSSHKeyDialog
 import systems.pkt.centaurx.ui.theme.CentaurxTheme
 import systems.pkt.centaurx.viewmodel.AppViewModel
@@ -26,6 +27,7 @@ fun CentaurxApp(viewModel: AppViewModel) {
                 TopBar(
                     username = state.username,
                     onShowSettings = { viewModel.showSettings(true) },
+                    onShowFontSize = { viewModel.showFontSize(true) },
                     onLogout = { viewModel.logout() },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
@@ -44,6 +46,17 @@ fun CentaurxApp(viewModel: AppViewModel) {
                 onSave = { value ->
                     viewModel.updateEndpoint(value)
                     viewModel.showSettings(false)
+                },
+            )
+        }
+
+        if (state.showFontSize) {
+            FontSizeDialog(
+                fontSizeSp = state.fontSizeSp,
+                onDismiss = { viewModel.showFontSize(false) },
+                onSave = { value ->
+                    viewModel.updateFontSize(value)
+                    viewModel.showFontSize(false)
                 },
             )
         }

@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import systems.pkt.centaurx.data.ApiClient
 import systems.pkt.centaurx.data.CentaurxRepository
 import systems.pkt.centaurx.data.EndpointStore
+import systems.pkt.centaurx.data.FontSizeStore
 import systems.pkt.centaurx.data.PersistentCookieJar
 import systems.pkt.centaurx.data.StreamClient
 
@@ -23,12 +24,13 @@ class CentaurxApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         val endpointStore = EndpointStore(dataStore, appScope)
+        val fontSizeStore = FontSizeStore(dataStore, appScope)
         val cookieJar = PersistentCookieJar(dataStore, appScope)
         val httpClient = OkHttpClient.Builder()
             .cookieJar(cookieJar)
             .build()
         val apiClient = ApiClient(httpClient, endpointStore)
         val streamClient = StreamClient(httpClient)
-        repository = CentaurxRepository(apiClient, streamClient, endpointStore)
+        repository = CentaurxRepository(apiClient, streamClient, endpointStore, fontSizeStore)
     }
 }

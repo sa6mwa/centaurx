@@ -1,5 +1,6 @@
 package systems.pkt.centaurx.viewmodel
 
+import systems.pkt.centaurx.DefaultTerminalFontSizeSp
 import systems.pkt.centaurx.data.TabSnapshot
 
 enum class StatusLevel {
@@ -35,8 +36,10 @@ data class UiState(
     val rotateSSHKeyError: String? = null,
     val isBusy: Boolean = false,
     val showSettings: Boolean = false,
+    val showFontSize: Boolean = false,
     val showChpasswd: Boolean = false,
     val showCodexAuth: Boolean = false,
     val showRotateSSHKey: Boolean = false,
+    val fontSizeSp: Int = DefaultTerminalFontSizeSp,
     val history: Map<String, HistoryState> = emptyMap(),
 )

@@ -7,6 +7,10 @@ object TestTags {
     const val EndpointButton = "endpoint_button"
     const val EndpointInput = "endpoint_input"
     const val EndpointSave = "endpoint_save"
+    const val FontSizeButton = "font_size_button"
+    const val FontSizeSlider = "font_size_slider"
+    const val FontSizeSave = "font_size_save"
+    const val FontSizeValue = "font_size_value"
     const val LogoutButton = "logout_button"
 
     const val LoginUsername = "login_username"

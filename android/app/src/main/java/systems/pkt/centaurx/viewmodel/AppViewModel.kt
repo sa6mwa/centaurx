@@ -39,12 +39,23 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
             }
         }
         viewModelScope.launch {
+            repository.fontSizeFlow.collectLatest { size ->
+                _state.update {
+                    it.copy(fontSizeSp = size)
+                }
+            }
+        }
+        viewModelScope.launch {
             checkSession()
         }
     }
 
     fun showSettings(show: Boolean) {
         _state.update { it.copy(showSettings = show) }
+    }
+
+    fun showFontSize(show: Boolean) {
+        _state.update { it.copy(showFontSize = show) }
     }
 
     fun showChangePassword(show: Boolean) {
@@ -71,6 +82,10 @@ class AppViewModel(private val repository: CentaurxRepository) : ViewModel() {
         repository.setEndpoint(value)
         stopStream()
         resetClientState()
+    }
+
+    fun updateFontSize(value: Int) {
+        repository.setFontSize(value)
     }
 
     fun login(username: String, password: String, totp: String) {

@@ -8,11 +8,17 @@ class CentaurxRepository(
     private val apiClient: ApiClient,
     private val streamClient: StreamClient,
     private val endpointStore: EndpointStore,
+    private val fontSizeStore: FontSizeStore,
 ) {
     val endpointFlow: Flow<String> = endpointStore.endpointFlow
+    val fontSizeFlow: Flow<Int> = fontSizeStore.fontSizeFlow
 
     fun setEndpoint(value: String) {
         endpointStore.setEndpoint(value)
+    }
+
+    fun setFontSize(value: Int) {
+        fontSizeStore.setFontSize(value)
     }
 
     suspend fun currentEndpoint(): String {

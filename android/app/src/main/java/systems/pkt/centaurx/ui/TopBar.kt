@@ -39,6 +39,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 fun TopBar(
     username: String?,
     onShowSettings: () -> Unit,
+    onShowFontSize: () -> Unit,
     onLogout: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -101,6 +102,14 @@ fun TopBar(
                                     onShowSettings()
                                 },
                                 modifier = Modifier.testTag(TestTags.EndpointButton),
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Set font size") },
+                                onClick = {
+                                    menuExpanded = false
+                                    onShowFontSize()
+                                },
+                                modifier = Modifier.testTag(TestTags.FontSizeButton),
                             )
                             if (!username.isNullOrBlank()) {
                                 DropdownMenuItem(
