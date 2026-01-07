@@ -11,21 +11,14 @@ const defaultModule = "pkt.systems/centaurx"
 // buildVersion is set via -ldflags "-X pkt.systems/centaurx/internal/version.buildVersion=...".
 var buildVersion = ""
 
-// Current returns the best available version string.
+// Current returns the best available version string (without dirty suffix).
 func Current() string {
-	if strings.TrimSpace(buildVersion) != "" {
-		return buildVersion
-	}
-	info, ok := debug.ReadBuildInfo()
-	if ok {
-		if v := strings.TrimSpace(info.Main.Version); v != "" && v != "(devel)" {
-			return v
-		}
-		if v := pseudoFromBuildInfo(info); v != "" {
-			return v
-		}
-	}
-	return "v0.0.0-unknown"
+	return currentFromBuildInfo(false)
+}
+
+// CurrentWithDirty returns the best available version string (including dirty suffix when available).
+func CurrentWithDirty() string {
+	return currentFromBuildInfo(true)
 }
 
 // Module returns the module path from build info when available.
@@ -39,7 +32,31 @@ func Module() string {
 	return defaultModule
 }
 
-func pseudoFromBuildInfo(info *debug.BuildInfo) string {
+func currentFromBuildInfo(includeDirty bool) string {
+	if strings.TrimSpace(buildVersion) != "" {
+		return normalizeVersion(buildVersion, includeDirty)
+	}
+	info, ok := debug.ReadBuildInfo()
+	if ok {
+		if v := strings.TrimSpace(info.Main.Version); v != "" && v != "(devel)" {
+			return normalizeVersion(v, includeDirty)
+		}
+		if v := pseudoFromBuildInfo(info, includeDirty); v != "" {
+			return normalizeVersion(v, includeDirty)
+		}
+	}
+	return "v0.0.0-unknown"
+}
+
+func normalizeVersion(v string, includeDirty bool) string {
+	value := strings.TrimSpace(v)
+	if includeDirty {
+		return value
+	}
+	return strings.TrimSuffix(value, "+dirty")
+}
+
+func pseudoFromBuildInfo(info *debug.BuildInfo, includeDirty bool) string {
 	if info == nil {
 		return ""
 	}
@@ -68,7 +85,7 @@ func pseudoFromBuildInfo(info *debug.BuildInfo) string {
 		rev = rev[:12]
 	}
 	ver := "v0.0.0-" + parsed.UTC().Format("20060102150405") + "-" + rev
-	if modified {
+	if modified && includeDirty {
 		ver += "+dirty"
 	}
 	return ver

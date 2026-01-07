@@ -2,6 +2,7 @@ package version
 
 import (
 	"runtime/debug"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,17 +26,27 @@ func TestPseudoFromBuildInfo(t *testing.T) {
 			{Key: "vcs.modified", Value: "true"},
 		},
 	}
-	got := pseudoFromBuildInfo(info)
+	got := pseudoFromBuildInfo(info, false)
 	if got == "" {
 		t.Fatalf("expected pseudo version")
 	}
 	if wantPrefix := "v0.0.0-20250102030405-1234567890ab"; got[:len(wantPrefix)] != wantPrefix {
 		t.Fatalf("unexpected version prefix: %q", got)
 	}
-	if got[len(got)-6:] != "+dirty" {
-		t.Fatalf("expected dirty suffix, got %q", got)
+	if strings.Contains(got, "+dirty") {
+		t.Fatalf("expected no dirty suffix, got %q", got)
 	}
-	if pseudoFromBuildInfo(nil) != "" {
+	gotDirty := pseudoFromBuildInfo(info, true)
+	if !strings.Contains(gotDirty, "+dirty") {
+		t.Fatalf("expected dirty suffix, got %q", gotDirty)
+	}
+	if got := normalizeVersion("v1.2.3+dirty", false); got != "v1.2.3" {
+		t.Fatalf("expected dirty suffix removed, got %q", got)
+	}
+	if got := normalizeVersion("v1.2.3+dirty", true); got != "v1.2.3+dirty" {
+		t.Fatalf("expected dirty suffix preserved, got %q", got)
+	}
+	if pseudoFromBuildInfo(nil, false) != "" {
 		t.Fatalf("expected empty version for nil build info")
 	}
 }

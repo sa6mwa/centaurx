@@ -6,6 +6,7 @@ require (
 	github.com/chromedp/chromedp v0.14.2
 	github.com/containerd/containerd/v2 v2.2.0
 	github.com/containerd/errdefs v1.0.0
+	github.com/containerd/platforms v1.0.0-rc.2
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/moby/buildkit v0.26.3
@@ -39,7 +40,6 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
-	github.com/containerd/platforms v1.0.0-rc.2 // indirect
 	github.com/containerd/plugin v1.0.0 // indirect
 	github.com/containerd/ttrpc v1.2.7 // indirect
 	github.com/containerd/typeurl/v2 v2.2.3 // indirect
