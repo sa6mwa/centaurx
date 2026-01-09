@@ -137,9 +137,12 @@ func TestRunnerGitSSHDebugAgainstGoServer(t *testing.T) {
 		SSHAgentDir:     agentDir,
 		RunnerBinary:    "codex",
 		GitSSHDebug:     true,
+		ContainerScope:  "tab",
 		IdleTimeout:     0,
 		SocketWait:      30 * time.Second,
 		SocketRetryWait: 200 * time.Millisecond,
+		CPUPercent:      70,
+		MemoryPercent:   70,
 	}, hostNetworkRuntime{base: rt}, agentMgr)
 	if err != nil {
 		t.Fatalf("runner provider: %v", err)

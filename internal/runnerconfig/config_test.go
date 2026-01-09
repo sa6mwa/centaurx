@@ -25,6 +25,9 @@ socket_path: $SOCK_PATH
 	if cfg.KeepaliveIntervalSeconds != 10 || cfg.KeepaliveMisses != 3 {
 		t.Fatalf("expected default keepalive values, got %d/%d", cfg.KeepaliveIntervalSeconds, cfg.KeepaliveMisses)
 	}
+	if cfg.ExecNice != 10 || cfg.CommandNice != 5 {
+		t.Fatalf("expected default nice values, got %d/%d", cfg.ExecNice, cfg.CommandNice)
+	}
 }
 
 func TestLoadRejectsMissingPath(t *testing.T) {

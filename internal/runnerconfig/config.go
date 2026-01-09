@@ -14,6 +14,8 @@ type Config struct {
 	Binary                   string            `yaml:"binary"`
 	Args                     []string          `yaml:"args"`
 	Env                      map[string]string `yaml:"env"`
+	ExecNice                 int               `yaml:"exec_nice"`
+	CommandNice              int               `yaml:"command_nice"`
 	KeepaliveIntervalSeconds int               `yaml:"keepalive_interval_seconds"`
 	KeepaliveMisses          int               `yaml:"keepalive_misses"`
 }
@@ -44,6 +46,12 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.KeepaliveMisses == 0 {
 		cfg.KeepaliveMisses = 3
+	}
+	if cfg.ExecNice == 0 {
+		cfg.ExecNice = 10
+	}
+	if cfg.CommandNice == 0 {
+		cfg.CommandNice = 5
 	}
 	return cfg, nil
 }

@@ -7,4 +7,5 @@ type Config struct {
 	SocketPath        string
 	KeepaliveInterval time.Duration
 	KeepaliveMisses   int
+	CommandNice       int
 }

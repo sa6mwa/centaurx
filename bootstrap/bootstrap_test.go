@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -82,6 +83,27 @@ func TestDefaultFilesWithSeedUsers(t *testing.T) {
 	}
 }
 
+func TestBootstrapConfigParity(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	hostCfg, err := DefaultHostConfig()
+	if err != nil {
+		t.Fatalf("DefaultHostConfig: %v", err)
+	}
+	files, _, err := DefaultFiles()
+	if err != nil {
+		t.Fatalf("DefaultFiles: %v", err)
+	}
+	containerCfg := readConfig(t, files.ConfigYAML)
+
+	stripBootstrapPaths(&hostCfg)
+	stripBootstrapPaths(&containerCfg)
+	if !reflect.DeepEqual(hostCfg, containerCfg) {
+		t.Fatalf("host/container configs differ after path normalization")
+	}
+}
+
 func readPodmanHostPaths(t *testing.T, data []byte) map[string]string {
 	t.Helper()
 	var spec podmanSpec
@@ -119,4 +141,21 @@ func assertHostPath(t *testing.T, paths map[string]string, name, expected string
 	if expected != "" && path != expected {
 		t.Fatalf("unexpected host path for %s: %q", name, path)
 	}
+}
+
+func stripBootstrapPaths(cfg *appconfig.Config) {
+	cfg.RepoRoot = ""
+	cfg.StateDir = ""
+	cfg.Runner.SockDir = ""
+	cfg.Runner.RepoRoot = ""
+	cfg.Runner.SocketPath = ""
+	cfg.Runner.HostRepoRoot = ""
+	cfg.Runner.HostStateDir = ""
+	cfg.Runner.Podman.Address = ""
+	cfg.SSH.HostKeyPath = ""
+	cfg.SSH.KeyStorePath = ""
+	cfg.SSH.KeyDir = ""
+	cfg.SSH.AgentDir = ""
+	cfg.Auth.UserFile = ""
+	cfg.HTTP.SessionStorePath = ""
 }

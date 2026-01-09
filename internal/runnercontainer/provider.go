@@ -29,6 +29,25 @@ const (
 	defaultContainerHome  = "/centaurx"
 )
 
+type containerScope string
+
+const (
+	scopeUnknown containerScope = ""
+	scopeUser    containerScope = "user"
+	scopeTab     containerScope = "tab"
+)
+
+func parseContainerScope(value string) containerScope {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case string(scopeUser), "":
+		return scopeUser
+	case string(scopeTab):
+		return scopeTab
+	default:
+		return scopeUnknown
+	}
+}
+
 // Config configures the runner container provider.
 type Config struct {
 	Image              string
@@ -44,6 +63,9 @@ type Config struct {
 	RunnerArgs         []string
 	RunnerEnv          map[string]string
 	GitSSHDebug        bool
+	ContainerScope     string
+	ExecNice           int
+	CommandNice        int
 	IdleTimeout        time.Duration
 	KeepaliveInterval  time.Duration
 	KeepaliveMisses    int
@@ -51,9 +73,8 @@ type Config struct {
 	LogBufferBytes     int
 	SocketWait         time.Duration
 	SocketRetryWait    time.Duration
-	CgroupParent       string
-	GroupCPUPercent    int
-	GroupMemoryPercent int
+	CPUPercent         int
+	MemoryPercent      int
 }
 
 // Provider manages per-tab runner containers.
@@ -70,6 +91,8 @@ type Provider struct {
 	containerSockDir  string
 	containerAgentDir string
 	skelData          userhome.TemplateData
+	scope             containerScope
+	resourceCaps      *shipohoy.ResourceCaps
 
 	mu   sync.Mutex
 	tabs map[tabKey]*tabRunner
@@ -87,7 +110,6 @@ type tabKey struct {
 type tabRunner struct {
 	client          *runnergrpc.Client
 	handle          shipohoy.Handle
-	runner          core.Runner
 	info            core.RunnerInfo
 	lastUsed        time.Time
 	running         int
@@ -95,6 +117,7 @@ type tabRunner struct {
 
 	wait chan struct{}
 	err  error
+	tabs map[schema.TabID]struct{}
 }
 
 // NewProvider constructs a Provider.
@@ -123,7 +146,11 @@ func NewProvider(ctx context.Context, cfg Config, rt shipohoy.Runtime, agents *s
 	if strings.TrimSpace(cfg.SSHAgentDir) == "" {
 		return nil, errors.New("ssh agent directory is required")
 	}
-	applyGroupLimits(&cfg, pslog.Ctx(ctx))
+	scope := parseContainerScope(cfg.ContainerScope)
+	if scope == scopeUnknown {
+		return nil, fmt.Errorf("runner.container_scope must be \"user\" or \"tab\"")
+	}
+	caps := resourceCapsFromPercent(cfg.CPUPercent, cfg.MemoryPercent, pslog.Ctx(ctx))
 
 	if strings.TrimSpace(cfg.HostRepoRoot) != "" {
 		runnerRoot := filepath.Clean(cfg.RunnerRepoRoot)
@@ -193,6 +220,8 @@ func NewProvider(ctx context.Context, cfg Config, rt shipohoy.Runtime, agents *s
 		containerSockDir:  cfg.SockDir,
 		containerAgentDir: cfg.SSHAgentDir,
 		skelData:          cfg.SkelData,
+		scope:             scope,
+		resourceCaps:      caps,
 		tabs:              make(map[tabKey]*tabRunner),
 	}
 	if cfg.IdleTimeout > 0 {
@@ -215,7 +244,7 @@ func (p *Provider) RunnerFor(ctx context.Context, req core.RunnerRequest) (core.
 		}
 		return core.RunnerResponse{}, errors.New("tab id is required")
 	}
-	key := tabKey{user: req.UserID, tab: req.TabID}
+	key := p.keyFor(req.UserID, req.TabID)
 	log := p.logger.With("user", req.UserID, "tab", req.TabID)
 
 	p.mu.Lock()
@@ -244,17 +273,19 @@ func (p *Provider) RunnerFor(ctx context.Context, req core.RunnerRequest) (core.
 			return core.RunnerResponse{}, err
 		}
 		entry.lastUsed = time.Now()
-		resp := core.RunnerResponse{Runner: entry.runner, Info: entry.info}
+		p.trackTabLocked(entry, req.TabID)
+		resp := core.RunnerResponse{Runner: newTrackedRunner(entry.client, p, key, req.TabID), Info: entry.info}
 		p.mu.Unlock()
 		log.Debug("runner ready (cache hit)", "container", entry.handle.Name())
 		return resp, nil
 	}
 	entry := &tabRunner{wait: make(chan struct{})}
+	p.trackTabLocked(entry, req.TabID)
 	p.tabs[key] = entry
 	p.mu.Unlock()
 
 	log.Info("runner start requested")
-	client, info, handle, err := p.startRunner(ctx, key)
+	client, info, handle, err := p.startRunner(ctx, key, req.TabID)
 	p.mu.Lock()
 	if err != nil {
 		entry.err = err
@@ -267,14 +298,43 @@ func (p *Provider) RunnerFor(ctx context.Context, req core.RunnerRequest) (core.
 	entry.client = client
 	entry.handle = handle
 	entry.info = info
-	entry.runner = newTrackedRunner(client, p, key)
 	entry.keepaliveCancel = p.startKeepalive(key, client)
 	entry.lastUsed = time.Now()
 	close(entry.wait)
 	entry.wait = nil
 	p.mu.Unlock()
 	log.Info("runner ready", "container", handle.Name(), "socket", filepath.Join(p.cfg.SockDir, string(key.user), string(key.tab), "runner.sock"))
-	return core.RunnerResponse{Runner: entry.runner, Info: entry.info}, nil
+	return core.RunnerResponse{Runner: newTrackedRunner(entry.client, p, key, req.TabID), Info: entry.info}, nil
+}
+
+func (p *Provider) keyFor(user schema.UserID, tab schema.TabID) tabKey {
+	if p.scope == scopeTab {
+		return tabKey{user: user, tab: tab}
+	}
+	return tabKey{user: user}
+}
+
+func (p *Provider) trackTabLocked(entry *tabRunner, tabID schema.TabID) {
+	if p.scope != scopeUser || entry == nil || tabID == "" {
+		return
+	}
+	if entry.tabs == nil {
+		entry.tabs = make(map[schema.TabID]struct{})
+	}
+	entry.tabs[tabID] = struct{}{}
+}
+
+func (p *Provider) closeEntry(ctx context.Context, key tabKey, reason string) {
+	p.mu.Lock()
+	entry := p.tabs[key]
+	if entry == nil {
+		p.mu.Unlock()
+		return
+	}
+	delete(p.tabs, key)
+	p.mu.Unlock()
+	p.logger.Info("runner stop requested", "user", key.user, "tab", key.tab, "reason", reason)
+	_ = p.stopRunner(ctx, entry, key, reason)
 }
 
 // CloseTab stops and removes the runner for a tab.
@@ -291,13 +351,22 @@ func (p *Provider) CloseTab(ctx context.Context, req core.RunnerCloseRequest) er
 		}
 		return errors.New("tab id is required")
 	}
-	key := tabKey{user: req.UserID, tab: req.TabID}
+	key := p.keyFor(req.UserID, req.TabID)
 
 	p.mu.Lock()
 	entry := p.tabs[key]
 	if entry == nil {
 		p.mu.Unlock()
 		return nil
+	}
+	if p.scope == scopeUser && req.TabID != "" {
+		delete(entry.tabs, req.TabID)
+		remaining := len(entry.tabs)
+		if remaining > 0 {
+			p.mu.Unlock()
+			p.logger.Info("runner tab released", "user", req.UserID, "tab", req.TabID, "remaining", remaining)
+			return nil
+		}
 	}
 	delete(p.tabs, key)
 	p.mu.Unlock()
@@ -331,8 +400,11 @@ func (p *Provider) CloseAll(ctx context.Context) error {
 	return lastErr
 }
 
-func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Client, core.RunnerInfo, shipohoy.Handle, error) {
-	log := p.logger.With("user", key.user, "tab", key.tab)
+func (p *Provider) startRunner(ctx context.Context, key tabKey, logTab schema.TabID) (*runnergrpc.Client, core.RunnerInfo, shipohoy.Handle, error) {
+	if logTab == "" {
+		logTab = key.tab
+	}
+	log := p.logger.With("user", key.user, "tab", logTab)
 	agentSock, err := p.agents.EnsureAgent(string(key.user))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -402,7 +474,7 @@ func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Cli
 		ReadOnlyRootfs: true,
 		AutoRemove:     true,
 		LogBufferBytes: p.cfg.LogBufferBytes,
-		CgroupParent:   p.cfg.CgroupParent,
+		ResourceCaps:   p.resourceCaps,
 		Mounts: []shipohoy.Mount{
 			{Source: hostRepoRoot, Target: containerRepoRoot, ReadOnly: false},
 			{Source: hostHomePath, Target: defaultContainerHome, ReadOnly: false},
@@ -556,10 +628,8 @@ func (p *Provider) startKeepalive(key tabKey, client *runnergrpc.Client) context
 					consecutive = 0
 				}
 				if consecutive >= misses {
-					log.Warn("runner keepalive missed; closing tab", "misses", consecutive)
-					go func() {
-						_ = p.CloseTab(context.Background(), core.RunnerCloseRequest{UserID: key.user, TabID: key.tab})
-					}()
+					log.Warn("runner keepalive missed; closing runner", "misses", consecutive)
+					go p.closeEntry(context.Background(), key, "keepalive missed")
 					return
 				}
 			}
@@ -569,7 +639,12 @@ func (p *Provider) startKeepalive(key tabKey, client *runnergrpc.Client) context
 }
 
 func (p *Provider) containerName(key tabKey) string {
-	return fmt.Sprintf("%s-%s-%s", p.cfg.NamePrefix, sanitizeName(string(key.user)), sanitizeName(string(key.tab)))
+	user := sanitizeName(string(key.user))
+	tab := sanitizeName(string(key.tab))
+	if tab == "" {
+		return fmt.Sprintf("%s-%s", p.cfg.NamePrefix, user)
+	}
+	return fmt.Sprintf("%s-%s-%s", p.cfg.NamePrefix, user, tab)
 }
 
 func (p *Provider) runnerCommand(socketPath string) []string {
@@ -588,6 +663,12 @@ func (p *Provider) runnerCommand(socketPath string) []string {
 	}
 	if p.cfg.KeepaliveMisses > 0 {
 		cmd = append(cmd, "--keepalive-misses", fmt.Sprintf("%d", p.cfg.KeepaliveMisses))
+	}
+	if p.cfg.ExecNice != 0 {
+		cmd = append(cmd, "--exec-nice", fmt.Sprintf("%d", p.cfg.ExecNice))
+	}
+	if p.cfg.CommandNice != 0 {
+		cmd = append(cmd, "--command-nice", fmt.Sprintf("%d", p.cfg.CommandNice))
 	}
 	return cmd
 }
@@ -741,15 +822,19 @@ type trackedRunner struct {
 	base     core.Runner
 	provider *Provider
 	key      tabKey
+	logTab   schema.TabID
 }
 
-func newTrackedRunner(base core.Runner, provider *Provider, key tabKey) core.Runner {
-	return &trackedRunner{base: base, provider: provider, key: key}
+func newTrackedRunner(base core.Runner, provider *Provider, key tabKey, logTab schema.TabID) core.Runner {
+	if logTab == "" {
+		logTab = key.tab
+	}
+	return &trackedRunner{base: base, provider: provider, key: key, logTab: logTab}
 }
 
 func (t *trackedRunner) Run(ctx context.Context, req core.RunRequest) (core.RunHandle, error) {
-	t.provider.logger.Info("runner exec requested", "user", t.key.user, "tab", t.key.tab, "model", req.Model, "resume", req.ResumeSessionID != "", "json", req.JSON, "prompt_len", len(req.Prompt))
-	done := t.provider.startRun(t.key, "exec")
+	t.provider.logger.Info("runner exec requested", "user", t.key.user, "tab", t.logTab, "model", req.Model, "resume", req.ResumeSessionID != "", "json", req.JSON, "prompt_len", len(req.Prompt))
+	done := t.provider.startRun(t.key, t.logTab, "exec")
 	handle, err := t.base.Run(ctx, req)
 	if err != nil {
 		done()
@@ -759,8 +844,8 @@ func (t *trackedRunner) Run(ctx context.Context, req core.RunRequest) (core.RunH
 }
 
 func (t *trackedRunner) RunCommand(ctx context.Context, req core.RunCommandRequest) (core.CommandHandle, error) {
-	t.provider.logger.Trace("runner command requested", "user", t.key.user, "tab", t.key.tab, "shell", req.UseShell, "command_len", len(req.Command))
-	done := t.provider.startRun(t.key, "command")
+	t.provider.logger.Trace("runner command requested", "user", t.key.user, "tab", t.logTab, "shell", req.UseShell, "command_len", len(req.Command))
+	done := t.provider.startRun(t.key, t.logTab, "command")
 	handle, err := t.base.RunCommand(ctx, req)
 	if err != nil {
 		done()
@@ -774,11 +859,11 @@ func (t *trackedRunner) Usage(ctx context.Context) (core.UsageInfo, error) {
 	if !ok {
 		return core.UsageInfo{}, nil
 	}
-	t.provider.logger.Debug("runner usage requested", "user", t.key.user, "tab", t.key.tab)
+	t.provider.logger.Debug("runner usage requested", "user", t.key.user, "tab", t.logTab)
 	return reader.Usage(ctx)
 }
 
-func (p *Provider) startRun(key tabKey, op string) func() {
+func (p *Provider) startRun(key tabKey, logTab schema.TabID, op string) func() {
 	p.mu.Lock()
 	entry := p.tabs[key]
 	if entry != nil {
@@ -786,7 +871,10 @@ func (p *Provider) startRun(key tabKey, op string) func() {
 		entry.lastUsed = time.Now()
 	}
 	p.mu.Unlock()
-	p.logger.Trace("runner activity start", "user", key.user, "tab", key.tab, "op", op)
+	if logTab == "" {
+		logTab = key.tab
+	}
+	p.logger.Trace("runner activity start", "user", key.user, "tab", logTab, "op", op)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -799,7 +887,7 @@ func (p *Provider) startRun(key tabKey, op string) func() {
 				entry.lastUsed = time.Now()
 			}
 			p.mu.Unlock()
-			p.logger.Trace("runner activity stop", "user", key.user, "tab", key.tab, "op", op)
+			p.logger.Trace("runner activity stop", "user", key.user, "tab", logTab, "op", op)
 		})
 	}
 }

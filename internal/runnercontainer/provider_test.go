@@ -59,6 +59,9 @@ func TestNewProviderRejectsHostRepoRoot(t *testing.T) {
 		SockDir:        filepath.Join(stateDir, "sockets"),
 		StateDir:       stateDir,
 		SSHAgentDir:    filepath.Join(stateDir, "agents"),
+		ContainerScope: "tab",
+		CPUPercent:     70,
+		MemoryPercent:  70,
 	}
 	if _, err := NewProvider(context.Background(), cfg, fakeRuntime{}, manager); err == nil {
 		t.Fatalf("expected error for host repo root")
@@ -102,6 +105,9 @@ func TestRunnerSpecSetsAutoRemove(t *testing.T) {
 		RunnerBinary:    "codex",
 		SocketWait:      time.Second,
 		SocketRetryWait: 10 * time.Millisecond,
+		ContainerScope:  "tab",
+		CPUPercent:      70,
+		MemoryPercent:   70,
 	}, runtime, manager)
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
@@ -163,6 +169,9 @@ func TestRunnerUsesContainerAgentSock(t *testing.T) {
 		RunnerBinary:    "codex",
 		SocketWait:      time.Second,
 		SocketRetryWait: 10 * time.Millisecond,
+		ContainerScope:  "tab",
+		CPUPercent:      70,
+		MemoryPercent:   70,
 	}, runtime, manager)
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
@@ -181,6 +190,77 @@ func TestRunnerUsesContainerAgentSock(t *testing.T) {
 	}
 	if got := runtime.lastSpec.Env["SSH_AUTH_SOCK"]; got != expectedSock {
 		t.Fatalf("expected SSH_AUTH_SOCK %q, got %q", expectedSock, got)
+	}
+}
+
+func TestRunnerUserScopeSharesContainer(t *testing.T) {
+	temp := t.TempDir()
+	repoRoot := filepath.Join(temp, "repos")
+	stateDir := filepath.Join(temp, "state")
+	agentDir := filepath.Join(stateDir, "agents")
+	sockDir := filepath.Join(stateDir, "sockets")
+	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("state dir: %v", err)
+	}
+	manager, err := sshagent.NewManager(fakeKeyProvider{}, agentDir)
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	user := schema.UserID("tester")
+	tab1 := schema.TabID("tab1")
+	tab2 := schema.TabID("tab2")
+	hostSocketPath := filepath.Join(sockDir, string(user), "runner.sock")
+
+	runtime := &captureRuntime{socketPath: hostSocketPath}
+	provider, err := NewProvider(context.Background(), Config{
+		Image:           "test",
+		RepoRoot:        repoRoot,
+		RunnerRepoRoot:  "/repos",
+		HostRepoRoot:    repoRoot,
+		SockDir:         sockDir,
+		StateDir:        stateDir,
+		SSHAgentDir:     agentDir,
+		RunnerBinary:    "codex",
+		ContainerScope:  "user",
+		SocketWait:      time.Second,
+		SocketRetryWait: 10 * time.Millisecond,
+		CPUPercent:      70,
+		MemoryPercent:   70,
+	}, runtime, manager)
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+
+	if _, err := provider.RunnerFor(context.Background(), core.RunnerRequest{UserID: user, TabID: tab1}); err != nil {
+		t.Fatalf("runner for tab1: %v", err)
+	}
+	if _, err := provider.RunnerFor(context.Background(), core.RunnerRequest{UserID: user, TabID: tab2}); err != nil {
+		t.Fatalf("runner for tab2: %v", err)
+	}
+	if runtime.ensureCount != 1 {
+		t.Fatalf("expected one container start, got %d", runtime.ensureCount)
+	}
+
+	if err := provider.CloseTab(context.Background(), core.RunnerCloseRequest{UserID: user, TabID: tab1}); err != nil {
+		t.Fatalf("close tab1: %v", err)
+	}
+	if runtime.stopCount != 0 {
+		t.Fatalf("expected no stop after first tab, got %d", runtime.stopCount)
+	}
+
+	if err := provider.CloseTab(context.Background(), core.RunnerCloseRequest{UserID: user, TabID: tab2}); err != nil {
+		t.Fatalf("close tab2: %v", err)
+	}
+	if runtime.stopCount != 1 {
+		t.Fatalf("expected one stop after last tab, got %d", runtime.stopCount)
+	}
+	if runtime.removeCount != 1 {
+		t.Fatalf("expected one remove after last tab, got %d", runtime.removeCount)
 	}
 }
 
@@ -209,14 +289,18 @@ func (fakeHandle) Name() string { return "fake" }
 func (fakeHandle) ID() string   { return "fake" }
 
 type captureRuntime struct {
-	lastSpec   *shipohoy.ContainerSpec
-	socketPath string
-	listener   net.Listener
+	lastSpec    *shipohoy.ContainerSpec
+	socketPath  string
+	listener    net.Listener
+	ensureCount int
+	stopCount   int
+	removeCount int
 }
 
 func (c *captureRuntime) EnsureImage(context.Context, string) error { return nil }
 func (c *captureRuntime) EnsureRunning(_ context.Context, spec shipohoy.ContainerSpec) (shipohoy.Handle, error) {
 	c.lastSpec = &spec
+	c.ensureCount++
 	if c.socketPath != "" && c.listener == nil {
 		listener, err := net.Listen("unix", c.socketPath)
 		if err != nil {
@@ -226,8 +310,14 @@ func (c *captureRuntime) EnsureRunning(_ context.Context, spec shipohoy.Containe
 	}
 	return fakeHandle{}, nil
 }
-func (c *captureRuntime) Stop(context.Context, shipohoy.Handle) error   { return nil }
-func (c *captureRuntime) Remove(context.Context, shipohoy.Handle) error { return nil }
+func (c *captureRuntime) Stop(context.Context, shipohoy.Handle) error {
+	c.stopCount++
+	return nil
+}
+func (c *captureRuntime) Remove(context.Context, shipohoy.Handle) error {
+	c.removeCount++
+	return nil
+}
 func (c *captureRuntime) Exec(context.Context, shipohoy.Handle, shipohoy.ExecSpec) (shipohoy.ExecResult, error) {
 	return shipohoy.ExecResult{}, nil
 }

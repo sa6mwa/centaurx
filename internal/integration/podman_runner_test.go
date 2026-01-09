@@ -78,9 +78,12 @@ func TestPodmanRunnerNew(t *testing.T) {
 		StateDir:        stateDir,
 		SSHAgentDir:     agentDir,
 		RunnerBinary:    "codex",
+		ContainerScope:  "tab",
 		IdleTimeout:     0,
 		SocketWait:      10 * time.Second,
 		SocketRetryWait: 200 * time.Millisecond,
+		CPUPercent:      70,
+		MemoryPercent:   70,
 	}, rt, agentMgr)
 	if err != nil {
 		t.Fatalf("runner provider: %v", err)

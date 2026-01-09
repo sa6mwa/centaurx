@@ -100,6 +100,56 @@ type templateData struct {
 	ServerImage       string
 }
 
+func baseConfig(opts Options, imageTag string) (appconfig.Config, error) {
+	cfg, err := appconfig.DefaultConfig()
+	if err != nil {
+		return appconfig.Config{}, err
+	}
+	if opts.SeedUsers {
+		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
+	}
+	cfg.ConfigVersion = appconfig.CurrentConfigVersion
+	tag := resolveImageTag(imageTag)
+	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	if cfg.Runner.Limits.CPUPercent == 0 {
+		cfg.Runner.Limits.CPUPercent = 70
+	}
+	if cfg.Runner.Limits.MemoryPercent == 0 {
+		cfg.Runner.Limits.MemoryPercent = 70
+	}
+	if cfg.Runner.ExecNice == 0 {
+		cfg.Runner.ExecNice = 10
+	}
+	if cfg.Runner.CommandNice == 0 {
+		cfg.Runner.CommandNice = 5
+	}
+	return cfg, nil
+}
+
+func applyHostPaths(cfg appconfig.Config) appconfig.Config {
+	cfg.Runner.HostRepoRoot = cfg.RepoRoot
+	cfg.Runner.HostStateDir = cfg.StateDir
+	return cfg
+}
+
+func applyContainerPaths(cfg appconfig.Config, hostRepoRoot, hostStateDir string) appconfig.Config {
+	cfg.RepoRoot = "/cx/repos"
+	cfg.StateDir = "/cx/state"
+	cfg.Runner.SockDir = "/cx/state/runner"
+	cfg.Runner.RepoRoot = "/cx/repos"
+	cfg.Runner.SocketPath = "/cx/state/runner.sock"
+	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
+	cfg.Runner.HostRepoRoot = hostRepoRoot
+	cfg.Runner.HostStateDir = hostStateDir
+	cfg.SSH.HostKeyPath = "/cx/state/ssh/host_key"
+	cfg.SSH.KeyStorePath = "/cx/state/ssh/keys.bundle"
+	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
+	cfg.SSH.AgentDir = "/cx/state/ssh/agent"
+	cfg.Auth.UserFile = "/cx/state/users.json"
+	cfg.HTTP.SessionStorePath = "/cx/state/sessions.json"
+	return cfg
+}
+
 // DefaultFiles returns container-oriented bootstrap files.
 func DefaultFiles() (Files, *Assets, error) {
 	return DefaultFilesWithOptions(Options{})
@@ -107,44 +157,13 @@ func DefaultFiles() (Files, *Assets, error) {
 
 // DefaultFilesWithOptions returns container-oriented bootstrap files with options.
 func DefaultFilesWithOptions(opts Options) (Files, *Assets, error) {
-	hostCfg, err := appconfig.DefaultConfig()
+	baseCfg, err := baseConfig(opts, "")
 	if err != nil {
 		return Files{}, nil, err
 	}
-	cfg, err := appconfig.DefaultConfig()
-	if err != nil {
-		return Files{}, nil, err
-	}
-	if opts.SeedUsers {
-		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
-	}
-	cfg.ConfigVersion = appconfig.CurrentConfigVersion
-	cfg.RepoRoot = "/cx/repos"
-	cfg.StateDir = "/cx/state"
-	cfg.Runner.Runtime = "podman"
-	cfg.Runner.Image = "docker.io/pktsystems/centaurxrunner:latest"
-	cfg.Runner.SockDir = "/cx/state/runner"
-	cfg.Runner.RepoRoot = "/cx/repos"
-	cfg.Runner.SocketPath = "/cx/state/runner.sock"
-	cfg.Runner.Binary = "codex"
-	cfg.Runner.KeepaliveIntervalSeconds = 10
-	cfg.Runner.KeepaliveMisses = 3
-	cfg.Runner.Limits.CgroupParent = "centaurx-runner"
-	cfg.Runner.Limits.GroupCPUPercent = 70
-	cfg.Runner.Limits.GroupMemoryPercent = 70
-	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
-	tag := resolveImageTag("")
-	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
-	cfg.Runner.HostRepoRoot = hostCfg.RepoRoot
-	cfg.Runner.HostStateDir = hostCfg.StateDir
-	cfg.SSH.HostKeyPath = "/cx/state/ssh/host_key"
-	cfg.SSH.KeyStorePath = "/cx/state/ssh/keys.bundle"
-	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
-	cfg.SSH.AgentDir = "/cx/state/ssh/agent"
-	cfg.Auth.UserFile = "/cx/state/users.json"
-	cfg.HTTP.SessionStorePath = "/cx/state/sessions.json"
-
-	configYAML, err := yaml.Marshal(cfg)
+	hostCfg := applyHostPaths(baseCfg)
+	containerCfg := applyContainerPaths(baseCfg, hostCfg.RepoRoot, hostCfg.StateDir)
+	configYAML, err := yaml.Marshal(containerCfg)
 	if err != nil {
 		return Files{}, nil, err
 	}
@@ -155,7 +174,7 @@ func DefaultFilesWithOptions(opts Options) (Files, *Assets, error) {
 		HostStateDir:      hostCfg.StateDir,
 		HostRepoDir:       hostCfg.RepoRoot,
 		HostPodmanSock:    defaultPodmanSockPath(),
-		ServerImage:       tagImage(defaultServerImage, tag),
+		ServerImage:       tagImage(defaultServerImage, resolveImageTag("")),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
 	if err != nil {
@@ -195,40 +214,12 @@ func DefaultRepoBundle() (Files, *Assets, error) {
 
 // DefaultRepoBundleWithOptions returns container files intended for repo codegen (no embedded assets).
 func DefaultRepoBundleWithOptions(opts Options) (Files, *Assets, error) {
-	cfg, err := appconfig.DefaultConfig()
+	baseCfg, err := baseConfig(opts, "")
 	if err != nil {
 		return Files{}, nil, err
 	}
-	if opts.SeedUsers {
-		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
-	}
-	cfg.ConfigVersion = appconfig.CurrentConfigVersion
-	cfg.RepoRoot = "/cx/repos"
-	cfg.StateDir = "/cx/state"
-	cfg.Runner.Runtime = "podman"
-	cfg.Runner.Image = "docker.io/pktsystems/centaurxrunner:latest"
-	cfg.Runner.SockDir = "/cx/state/runner"
-	cfg.Runner.RepoRoot = "/cx/repos"
-	cfg.Runner.SocketPath = "/cx/state/runner.sock"
-	cfg.Runner.Binary = "codex"
-	cfg.Runner.KeepaliveIntervalSeconds = 10
-	cfg.Runner.KeepaliveMisses = 3
-	cfg.Runner.Limits.CgroupParent = "centaurx-runner"
-	cfg.Runner.Limits.GroupCPUPercent = 70
-	cfg.Runner.Limits.GroupMemoryPercent = 70
-	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
-	tag := resolveImageTag("")
-	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
-	cfg.Runner.HostRepoRoot = defaultHostRepoTemplate
-	cfg.Runner.HostStateDir = defaultHostStateTemplate
-	cfg.SSH.HostKeyPath = "/cx/state/ssh/host_key"
-	cfg.SSH.KeyStorePath = "/cx/state/ssh/keys.bundle"
-	cfg.SSH.KeyDir = "/cx/state/ssh/keys"
-	cfg.SSH.AgentDir = "/cx/state/ssh/agent"
-	cfg.Auth.UserFile = "/cx/state/users.json"
-	cfg.HTTP.SessionStorePath = "/cx/state/sessions.json"
-
-	configYAML, err := yaml.Marshal(cfg)
+	containerCfg := applyContainerPaths(baseCfg, defaultHostRepoTemplate, defaultHostStateTemplate)
+	configYAML, err := yaml.Marshal(containerCfg)
 	if err != nil {
 		return Files{}, nil, err
 	}
@@ -239,7 +230,7 @@ func DefaultRepoBundleWithOptions(opts Options) (Files, *Assets, error) {
 		HostStateDir:      defaultHostStateTemplate,
 		HostRepoDir:       defaultHostRepoTemplate,
 		HostPodmanSock:    defaultPodmanSockTemplate,
-		ServerImage:       tagImage(defaultServerImage, tag),
+		ServerImage:       tagImage(defaultServerImage, resolveImageTag("")),
 	}
 	composeYAML, err := renderComposeYAML(tplData)
 	if err != nil {
@@ -277,16 +268,12 @@ func DefaultHostConfigYAML() ([]byte, error) {
 
 // DefaultHostConfig returns a host-oriented config.
 func DefaultHostConfig() (appconfig.Config, error) {
-	cfg, err := appconfig.DefaultConfig()
+	cfg, err := baseConfig(Options{}, "")
 	if err != nil {
 		return appconfig.Config{}, err
 	}
 	cfg.ConfigVersion = appconfig.CurrentConfigVersion
-	cfg.Runner.RepoRoot = "/repos"
-	cfg.Runner.HostRepoRoot = cfg.RepoRoot
-	cfg.Runner.HostStateDir = cfg.StateDir
-	cfg.Runner.Image = tagImage(defaultRunnerImage, resolveImageTag(""))
-	return cfg, nil
+	return applyHostPaths(cfg), nil
 }
 
 // WriteFiles writes the bootstrap files to the output directory.

@@ -12,6 +12,7 @@ service:
 runner:
     runtime: podman
     image: docker.io/pktsystems/centaurxrunner:v0.4.0
+    container_scope: user
     sock_dir: /cx/state/runner
     repo_root: /cx/repos
     host_repo_root: ${HOME}/.centaurx/repos
@@ -21,13 +22,14 @@ runner:
     args: []
     env: {}
     git_ssh_debug: false
+    exec_nice: 10
+    command_nice: 5
     idle_timeout_hours: 8
     keepalive_interval_seconds: 10
     keepalive_misses: 3
     limits:
-        cgroup_parent: centaurx-runner
-        group_cpu_percent: 70
-        group_memory_percent: 70
+        cpu_percent: 70
+        memory_percent: 70
     podman:
         address: unix:///cx/podman.sock
         userns_mode: keep-id

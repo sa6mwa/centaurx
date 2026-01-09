@@ -311,6 +311,7 @@ func (s *Server) RunCommand(req *runnerpb.RunCommandRequest, stream runnerpb.Run
 		log.Error("runner command start failed", "err", err)
 		return status.Errorf(codes.Internal, "command start: %v", err)
 	}
+	applyNice(log, cmd.Process.Pid, s.cfg.CommandNice, "command")
 
 	pgid, _ := syscall.Getpgid(cmd.Process.Pid)
 	s.register(req.RunId, cmdProcess{cmd: cmd, pgid: pgid})
@@ -687,6 +688,21 @@ func readPPid(pid int) (int, error) {
 		}
 	}
 	return 0, errors.New("ppid not found")
+}
+
+func applyNice(log pslog.Logger, pid int, nice int, label string) {
+	if nice == 0 || pid <= 0 {
+		return
+	}
+	if err := syscall.Setpriority(syscall.PRIO_PROCESS, pid, nice); err != nil {
+		if log != nil {
+			log.Warn("runner nice set failed", "process", label, "pid", pid, "nice", nice, "err", err)
+		}
+		return
+	}
+	if log != nil {
+		log.Debug("runner nice set", "process", label, "pid", pid, "nice", nice)
+	}
 }
 
 func previewText(value string, max int) string {

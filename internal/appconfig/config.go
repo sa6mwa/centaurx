@@ -40,6 +40,7 @@ type ServiceConfig struct {
 type RunnerConfig struct {
 	Runtime                  string            `mapstructure:"runtime" yaml:"runtime"`
 	Image                    string            `mapstructure:"image" yaml:"image"`
+	ContainerScope           string            `mapstructure:"container_scope" yaml:"container_scope"`
 	SockDir                  string            `mapstructure:"sock_dir" yaml:"sock_dir"`
 	RepoRoot                 string            `mapstructure:"repo_root" yaml:"repo_root"`
 	HostRepoRoot             string            `mapstructure:"host_repo_root" yaml:"host_repo_root"`
@@ -49,6 +50,8 @@ type RunnerConfig struct {
 	Args                     []string          `mapstructure:"args" yaml:"args"`
 	Env                      map[string]string `mapstructure:"env" yaml:"env"`
 	GitSSHDebug              bool              `mapstructure:"git_ssh_debug" yaml:"git_ssh_debug"`
+	ExecNice                 int               `mapstructure:"exec_nice" yaml:"exec_nice"`
+	CommandNice              int               `mapstructure:"command_nice" yaml:"command_nice"`
 	IdleTimeout              int               `mapstructure:"idle_timeout_hours" yaml:"idle_timeout_hours"`
 	KeepaliveIntervalSeconds int               `mapstructure:"keepalive_interval_seconds" yaml:"keepalive_interval_seconds"`
 	KeepaliveMisses          int               `mapstructure:"keepalive_misses" yaml:"keepalive_misses"`
@@ -116,11 +119,10 @@ type BuildKitConfig struct {
 	Address string `mapstructure:"address" yaml:"address"`
 }
 
-// RunnerLimits configures group resource caps for runner containers.
+// RunnerLimits configures per-container resource caps for runner containers.
 type RunnerLimits struct {
-	CgroupParent       string `mapstructure:"cgroup_parent" yaml:"cgroup_parent"`
-	GroupCPUPercent    int    `mapstructure:"group_cpu_percent" yaml:"group_cpu_percent"`
-	GroupMemoryPercent int    `mapstructure:"group_memory_percent" yaml:"group_memory_percent"`
+	CPUPercent    int `mapstructure:"cpu_percent" yaml:"cpu_percent"`
+	MemoryPercent int `mapstructure:"memory_percent" yaml:"memory_percent"`
 }
 
 // DefaultConfig returns a config with sensible defaults.
@@ -149,6 +151,7 @@ func DefaultConfig() (Config, error) {
 		Runner: RunnerConfig{
 			Runtime:                  "podman",
 			Image:                    "docker.io/pktsystems/centaurxrunner:latest",
+			ContainerScope:           "user",
 			SockDir:                  filepath.Join(stateDir, "runner"),
 			RepoRoot:                 "/repos",
 			HostRepoRoot:             "",
@@ -158,11 +161,17 @@ func DefaultConfig() (Config, error) {
 			Args:                     []string{},
 			Env:                      map[string]string{},
 			GitSSHDebug:              false,
+			ExecNice:                 10,
+			CommandNice:              5,
 			IdleTimeout:              8,
 			KeepaliveIntervalSeconds: 10,
 			KeepaliveMisses:          3,
 			BuildTimeout:             20,
 			PullTimeout:              5,
+			Limits: RunnerLimits{
+				CPUPercent:    70,
+				MemoryPercent: 70,
+			},
 			Podman: PodmanConfig{
 				Address:    fmt.Sprintf("unix://%s", filepath.Join(runtimeDir, "podman", "podman.sock")),
 				UserNSMode: "keep-id",

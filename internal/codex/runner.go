@@ -21,6 +21,7 @@ type Config struct {
 	BinaryPath string
 	ExtraArgs  []string
 	Env        []string
+	Nice       int
 }
 
 // Runner implements core.Runner.
@@ -100,6 +101,7 @@ func (r *Runner) Run(ctx context.Context, req core.RunRequest) (core.RunHandle, 
 		}
 		return nil, err
 	}
+	applyNice(log, cmd.Process.Pid, r.cfg.Nice, "codex exec")
 	if log != nil && cmd.Process != nil {
 		log.Info("codex exec started", "pid", cmd.Process.Pid)
 	}
@@ -232,4 +234,19 @@ func filterEnv(env []string, key string) []string {
 		out = append(out, entry)
 	}
 	return out
+}
+
+func applyNice(log pslog.Logger, pid int, nice int, label string) {
+	if nice == 0 || pid <= 0 {
+		return
+	}
+	if err := syscall.Setpriority(syscall.PRIO_PROCESS, pid, nice); err != nil {
+		if log != nil {
+			log.Warn("codex nice set failed", "process", label, "pid", pid, "nice", nice, "err", err)
+		}
+		return
+	}
+	if log != nil {
+		log.Debug("codex nice set", "process", label, "pid", pid, "nice", nice)
+	}
 }

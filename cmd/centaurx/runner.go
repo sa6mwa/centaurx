@@ -23,22 +23,25 @@ func newRunnerCmd() *cobra.Command {
 	var runnerEnv []string
 	var keepaliveInterval time.Duration
 	var keepaliveMisses int
+	var execNice int
+	var commandNice int
 	cmd := &cobra.Command{
 		Use:   "runner",
 		Short: "Start the runner daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logger := pslog.Ctx(cmd.Context())
 
-			cfg, err := loadRunnerConfig(cfgPath, socketPath, binaryPath, runnerArgs, runnerEnv, keepaliveInterval, keepaliveMisses)
+			cfg, err := loadRunnerConfig(cfgPath, socketPath, binaryPath, runnerArgs, runnerEnv, keepaliveInterval, keepaliveMisses, execNice, commandNice)
 			if err != nil {
 				return err
 			}
-			logger.Info("runner config loaded", "binary", cfg.Binary, "args", len(cfg.Args), "env", len(cfg.Env), "keepalive_interval", cfg.KeepaliveInterval, "keepalive_misses", cfg.KeepaliveMisses)
+			logger.Info("runner config loaded", "binary", cfg.Binary, "args", len(cfg.Args), "env", len(cfg.Env), "keepalive_interval", cfg.KeepaliveInterval, "keepalive_misses", cfg.KeepaliveMisses, "exec_nice", cfg.ExecNice, "command_nice", cfg.CommandNice)
 
 			runner, err := codex.NewRunner(codex.Config{
 				BinaryPath: cfg.Binary,
 				ExtraArgs:  cfg.Args,
 				Env:        cfg.Env,
+				Nice:       cfg.ExecNice,
 			})
 			if err != nil {
 				return err
@@ -48,6 +51,7 @@ func newRunnerCmd() *cobra.Command {
 				SocketPath:        cfg.SocketPath,
 				KeepaliveInterval: cfg.KeepaliveInterval,
 				KeepaliveMisses:   cfg.KeepaliveMisses,
+				CommandNice:       cfg.CommandNice,
 			}, runner)
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
@@ -64,6 +68,8 @@ func newRunnerCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&runnerEnv, "env", nil, "extra env for codex (repeatable KEY=VAL)")
 	cmd.Flags().DurationVar(&keepaliveInterval, "keepalive-interval", 0, "runner keepalive interval (e.g. 10s)")
 	cmd.Flags().IntVar(&keepaliveMisses, "keepalive-misses", 0, "runner keepalive misses before exit")
+	cmd.Flags().IntVar(&execNice, "exec-nice", 0, "nice value for codex exec processes")
+	cmd.Flags().IntVar(&commandNice, "command-nice", 0, "nice value for shell command processes")
 	return cmd
 }
 
@@ -85,9 +91,11 @@ type runnerConfig struct {
 	Env               []string
 	KeepaliveInterval time.Duration
 	KeepaliveMisses   int
+	ExecNice          int
+	CommandNice       int
 }
 
-func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string, keepaliveInterval time.Duration, keepaliveMisses int) (runnerConfig, error) {
+func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string, keepaliveInterval time.Duration, keepaliveMisses int, execNice, commandNice int) (runnerConfig, error) {
 	if strings.TrimSpace(cfgPath) == "" {
 		cfg := runnerConfig{
 			SocketPath:        socketPath,
@@ -96,6 +104,8 @@ func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string
 			Env:               env,
 			KeepaliveInterval: keepaliveInterval,
 			KeepaliveMisses:   keepaliveMisses,
+			ExecNice:          execNice,
+			CommandNice:       commandNice,
 		}
 		if strings.TrimSpace(cfg.SocketPath) == "" {
 			return runnerConfig{}, errors.New("socket path is required")
@@ -108,6 +118,12 @@ func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string
 		}
 		if cfg.KeepaliveMisses == 0 {
 			cfg.KeepaliveMisses = 3
+		}
+		if cfg.ExecNice == 0 {
+			cfg.ExecNice = 10
+		}
+		if cfg.CommandNice == 0 {
+			cfg.CommandNice = 5
 		}
 		return cfg, nil
 	}
@@ -134,6 +150,12 @@ func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string
 	if keepaliveMisses > 0 {
 		fileCfg.KeepaliveMisses = keepaliveMisses
 	}
+	if execNice != 0 {
+		fileCfg.ExecNice = execNice
+	}
+	if commandNice != 0 {
+		fileCfg.CommandNice = commandNice
+	}
 
 	return runnerConfig{
 		SocketPath:        fileCfg.SocketPath,
@@ -142,6 +164,8 @@ func loadRunnerConfig(cfgPath, socketPath, binaryPath string, args, env []string
 		Env:               flattenEnv(fileCfg.Env),
 		KeepaliveInterval: time.Duration(fileCfg.KeepaliveIntervalSeconds) * time.Second,
 		KeepaliveMisses:   fileCfg.KeepaliveMisses,
+		ExecNice:          fileCfg.ExecNice,
+		CommandNice:       fileCfg.CommandNice,
 	}, nil
 }
 

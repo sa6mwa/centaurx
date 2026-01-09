@@ -130,12 +130,14 @@ func newServeCmd() *cobra.Command {
 				RunnerArgs:         cfg.Runner.Args,
 				RunnerEnv:          cfg.Runner.Env,
 				GitSSHDebug:        cfg.Runner.GitSSHDebug,
+				ContainerScope:     cfg.Runner.ContainerScope,
+				ExecNice:           cfg.Runner.ExecNice,
+				CommandNice:        cfg.Runner.CommandNice,
 				IdleTimeout:        time.Duration(cfg.Runner.IdleTimeout) * time.Hour,
 				KeepaliveInterval:  time.Duration(cfg.Runner.KeepaliveIntervalSeconds) * time.Second,
 				KeepaliveMisses:    cfg.Runner.KeepaliveMisses,
-				CgroupParent:       cfg.Runner.Limits.CgroupParent,
-				GroupCPUPercent:    cfg.Runner.Limits.GroupCPUPercent,
-				GroupMemoryPercent: cfg.Runner.Limits.GroupMemoryPercent,
+				CPUPercent:         cfg.Runner.Limits.CPUPercent,
+				MemoryPercent:      cfg.Runner.Limits.MemoryPercent,
 			}, rt, agentManager)
 			if err != nil {
 				return err
@@ -158,6 +160,14 @@ func newServeCmd() *cobra.Command {
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
+			go func() {
+				<-ctx.Done()
+				stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := server.Stop(stopCtx); err != nil {
+					logger.Warn("server stop failed", "err", err)
+				}
+			}()
 			logger.Info("http server listening", "addr", serverCfg.HTTP.Addr)
 			logger.Info("ssh server listening", "addr", serverCfg.SSH.Addr)
 			if err := server.Start(ctx); err != nil {
@@ -365,6 +375,25 @@ func validateRunnerConfig(cfg appconfig.Config) error {
 				return fmt.Errorf("runner.host_state_dir and runner.host_repo_root are required when using podman socket %q; set them to host paths (e.g. /home/%s/.centaurx/state)", addr, os.Getenv("USER"))
 			}
 		}
+	}
+	scope := strings.ToLower(strings.TrimSpace(cfg.Runner.ContainerScope))
+	if scope == "" {
+		scope = "user"
+	}
+	if scope != "user" && scope != "tab" {
+		return fmt.Errorf("runner.container_scope must be \"user\" or \"tab\"")
+	}
+	if cfg.Runner.CommandNice <= 0 {
+		return fmt.Errorf("runner.command_nice must be greater than zero")
+	}
+	if cfg.Runner.ExecNice <= cfg.Runner.CommandNice {
+		return fmt.Errorf("runner.exec_nice must be greater than runner.command_nice")
+	}
+	if cfg.Runner.Limits.CPUPercent < 0 || cfg.Runner.Limits.CPUPercent > 100 {
+		return fmt.Errorf("runner.limits.cpu_percent must be between 0 and 100")
+	}
+	if cfg.Runner.Limits.MemoryPercent < 0 || cfg.Runner.Limits.MemoryPercent > 100 {
+		return fmt.Errorf("runner.limits.memory_percent must be between 0 and 100")
 	}
 	hostRepoRoot := filepath.Clean(cfg.Runner.HostRepoRoot)
 	runnerRepoRoot := filepath.Clean(cfg.Runner.RepoRoot)

@@ -47,7 +47,6 @@ type ContainerSpec struct {
 	ReadOnlyRootfs bool
 	AutoRemove     bool
 	ResourceCaps   *ResourceCaps
-	CgroupParent   string
 	HostNetwork    bool
 	LogBufferBytes int
 }

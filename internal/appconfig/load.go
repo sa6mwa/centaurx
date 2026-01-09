@@ -37,6 +37,7 @@ func Load(path string) (Config, error) {
 	v.SetDefault("service.buffer_max_lines", cfg.Service.BufferMaxLines)
 	v.SetDefault("runner.runtime", cfg.Runner.Runtime)
 	v.SetDefault("runner.image", cfg.Runner.Image)
+	v.SetDefault("runner.container_scope", cfg.Runner.ContainerScope)
 	v.SetDefault("runner.sock_dir", cfg.Runner.SockDir)
 	v.SetDefault("runner.repo_root", cfg.Runner.RepoRoot)
 	v.SetDefault("runner.host_repo_root", cfg.Runner.HostRepoRoot)
@@ -46,14 +47,15 @@ func Load(path string) (Config, error) {
 	v.SetDefault("runner.args", cfg.Runner.Args)
 	v.SetDefault("runner.env", cfg.Runner.Env)
 	v.SetDefault("runner.git_ssh_debug", cfg.Runner.GitSSHDebug)
+	v.SetDefault("runner.exec_nice", cfg.Runner.ExecNice)
+	v.SetDefault("runner.command_nice", cfg.Runner.CommandNice)
 	v.SetDefault("runner.idle_timeout_hours", cfg.Runner.IdleTimeout)
 	v.SetDefault("runner.keepalive_interval_seconds", cfg.Runner.KeepaliveIntervalSeconds)
 	v.SetDefault("runner.keepalive_misses", cfg.Runner.KeepaliveMisses)
 	v.SetDefault("runner.build_timeout_minutes", cfg.Runner.BuildTimeout)
 	v.SetDefault("runner.pull_timeout_minutes", cfg.Runner.PullTimeout)
-	v.SetDefault("runner.limits.cgroup_parent", cfg.Runner.Limits.CgroupParent)
-	v.SetDefault("runner.limits.group_cpu_percent", cfg.Runner.Limits.GroupCPUPercent)
-	v.SetDefault("runner.limits.group_memory_percent", cfg.Runner.Limits.GroupMemoryPercent)
+	v.SetDefault("runner.limits.cpu_percent", cfg.Runner.Limits.CPUPercent)
+	v.SetDefault("runner.limits.memory_percent", cfg.Runner.Limits.MemoryPercent)
 	v.SetDefault("runner.podman.address", cfg.Runner.Podman.Address)
 	v.SetDefault("runner.podman.userns_mode", cfg.Runner.Podman.UserNSMode)
 	v.SetDefault("runner.containerd.address", cfg.Runner.Containerd.Address)
@@ -91,6 +93,12 @@ func Load(path string) (Config, error) {
 		}
 		if v.GetInt("config_version") != CurrentConfigVersion {
 			return Config{}, fmt.Errorf("unsupported config_version %d; expected %d", v.GetInt("config_version"), CurrentConfigVersion)
+		}
+		if v.IsSet("runner.limits.group_cpu_percent") && !v.IsSet("runner.limits.cpu_percent") {
+			v.Set("runner.limits.cpu_percent", v.GetInt("runner.limits.group_cpu_percent"))
+		}
+		if v.IsSet("runner.limits.group_memory_percent") && !v.IsSet("runner.limits.memory_percent") {
+			v.Set("runner.limits.memory_percent", v.GetInt("runner.limits.group_memory_percent"))
 		}
 		if v.IsSet("runner.use_stdin_prompt") {
 			return Config{}, fmt.Errorf("runner.use_stdin_prompt is not supported; prompts must use stdin")
@@ -181,7 +189,6 @@ func expandConfigEnv(cfg *Config) {
 	cfg.Runner.Podman.Address = expandEnv(cfg.Runner.Podman.Address)
 	cfg.Runner.Containerd.Address = expandEnv(cfg.Runner.Containerd.Address)
 	cfg.Runner.BuildKit.Address = expandEnv(cfg.Runner.BuildKit.Address)
-	cfg.Runner.Limits.CgroupParent = expandEnv(cfg.Runner.Limits.CgroupParent)
 	cfg.SSH.HostKeyPath = expandEnv(cfg.SSH.HostKeyPath)
 	cfg.SSH.KeyStorePath = expandEnv(cfg.SSH.KeyStorePath)
 	cfg.SSH.KeyDir = expandEnv(cfg.SSH.KeyDir)
