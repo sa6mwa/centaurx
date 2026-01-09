@@ -474,15 +474,19 @@ func waitForVerifySocket(ctx context.Context, socketPath string, interval time.D
 
 func verifyRunnerSocketMount(ctx context.Context, rt shipohoy.Runtime, handle shipohoy.Handle, socketDir, sentinel string) error {
 	cmd := fmt.Sprintf("test -d %s && test -w %s && test -f %s", socketDir, socketDir, path.Join(socketDir, sentinel))
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	res, err := rt.Exec(ctx, handle, shipohoy.ExecSpec{
 		Command: []string{"sh", "-c", cmd},
-		Timeout: 5 * time.Second,
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		Timeout: 10 * time.Second,
 	})
 	if err != nil {
-		return fmt.Errorf("runner runtime verify failed (socket mount check): %w", err)
+		return fmt.Errorf("runner runtime verify failed (socket mount check): %w (stdout: %s, stderr: %s)", err, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	if res.ExitCode != 0 {
-		return fmt.Errorf("runner runtime verify failed (socket mount check exit %d)", res.ExitCode)
+		return fmt.Errorf("runner runtime verify failed (socket mount check exit %d) (stdout: %s, stderr: %s)", res.ExitCode, strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()))
 	}
 	return nil
 }
