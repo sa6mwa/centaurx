@@ -293,6 +293,7 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 	log := pslog.Ctx(ctx)
 	verifyRoot := filepath.Join(cfg.StateDir, "verify", fmt.Sprintf("runner-%d", time.Now().UnixNano()))
 	homeDir := filepath.Join(verifyRoot, "home")
+	log.Debug("runner runtime verify dirs", "root", verifyRoot, "home", homeDir)
 	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		return fmt.Errorf("runner runtime verify home dir: %w", err)
 	}
@@ -302,6 +303,7 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 	containerSocketDir := path.Join(containerHome, "socket")
 	socketPath := filepath.Join(homeDir, "socket", "runner.sock")
 	containerSocketPath := path.Join(containerSocketDir, "runner.sock")
+	log.Debug("runner runtime verify socket paths", "host_socket", socketPath, "container_socket", containerSocketPath)
 
 	env := map[string]string{
 		"HOME":            containerHome,
@@ -337,6 +339,8 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		},
 		Labels: map[string]string{"centaurx.check": "true"},
 	}
+	log.Debug("runner runtime verify container", "container", name, "image", cfg.Runner.Image)
+	log.Trace("runner runtime verify command", "command", strings.Join(spec.Command, " "))
 
 	handle, err := rt.EnsureRunning(ctx, spec)
 	if err != nil {
@@ -352,11 +356,15 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer waitCancel()
 	if err := waitForVerifySocket(waitCtx, socketPath, 200*time.Millisecond); err != nil {
+		log.Warn("runner runtime verify socket wait failed", "err", err)
+		logVerifyContainerTail(context.Background(), rt, log, handle, "socket wait failed")
 		return fmt.Errorf("runner runtime verify failed (socket): %w", err)
 	}
 
 	client, err := runnergrpc.Dial(ctx, socketPath)
 	if err != nil {
+		log.Warn("runner runtime verify socket dial failed", "err", err)
+		logVerifyContainerTail(context.Background(), rt, log, handle, "socket dial failed")
 		return fmt.Errorf("runner runtime verify failed (dial): %w", err)
 	}
 	defer func() { _ = client.Close() }()
@@ -373,6 +381,8 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		UseShell:   true,
 	})
 	if err != nil {
+		log.Warn("runner runtime verify command start failed", "err", err)
+		logVerifyContainerTail(context.Background(), rt, log, handle, "command start failed")
 		return fmt.Errorf("runner runtime verify failed (command start): %w", err)
 	}
 	defer handleCmd.Close()
@@ -385,6 +395,7 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 			if errors.Is(err, io.EOF) {
 				break
 			}
+			log.Warn("runner runtime verify command output failed", "err", err)
 			return fmt.Errorf("runner runtime verify failed (command output): %w", err)
 		}
 		if line.Text != "" {
@@ -393,9 +404,13 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 	}
 	result, err := handleCmd.Wait(runCtx)
 	if err != nil {
+		log.Warn("runner runtime verify command wait failed", "err", err)
+		logVerifyContainerTail(context.Background(), rt, log, handle, "command wait failed")
 		return fmt.Errorf("runner runtime verify failed (command wait): %w", err)
 	}
 	if result.ExitCode != 0 {
+		log.Warn("runner runtime verify command failed", "exit_code", result.ExitCode, "output", strings.TrimSpace(output.String()))
+		logVerifyContainerTail(context.Background(), rt, log, handle, "command failed")
 		return fmt.Errorf("runner runtime verify failed (%s -V exit %d): %s", command, result.ExitCode, strings.TrimSpace(output.String()))
 	}
 	return nil
@@ -436,6 +451,44 @@ func waitForVerifySocket(ctx context.Context, socketPath string, interval time.D
 		}
 		time.Sleep(interval)
 	}
+}
+
+type verifyLogTailer interface {
+	TailLogs(ctx context.Context, handle shipohoy.Handle, limit int) ([]string, []string, error)
+}
+
+func logVerifyContainerTail(ctx context.Context, rt shipohoy.Runtime, log pslog.Logger, handle shipohoy.Handle, reason string) {
+	tailer, ok := rt.(verifyLogTailer)
+	if !ok || tailer == nil || handle == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	stdout, stderr, err := tailer.TailLogs(ctx, handle, 50)
+	if err != nil {
+		log.Warn("runner runtime verify logs unavailable", "reason", reason, "err", err)
+		return
+	}
+	log.Warn("runner runtime verify logs", "reason", reason, "stdout_lines", len(stdout), "stderr_lines", len(stderr))
+	if len(stdout) > 0 {
+		payload, truncated := formatVerifyLogTail(stdout, 2000)
+		log.Trace("runner runtime verify stdout tail", "truncated", truncated, "tail", payload)
+	}
+	if len(stderr) > 0 {
+		payload, truncated := formatVerifyLogTail(stderr, 2000)
+		log.Trace("runner runtime verify stderr tail", "truncated", truncated, "tail", payload)
+	}
+}
+
+func formatVerifyLogTail(lines []string, maxBytes int) (string, bool) {
+	payload := strings.Join(lines, "\n")
+	if maxBytes <= 0 || len(payload) <= maxBytes {
+		return payload, false
+	}
+	return payload[:maxBytes], true
 }
 
 func validateRunnerConfig(cfg appconfig.Config) error {
