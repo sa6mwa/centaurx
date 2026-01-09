@@ -292,19 +292,15 @@ func ensureUserHomes(cfg appconfig.Config, logger pslog.Logger) error {
 func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig.Config) error {
 	log := pslog.Ctx(ctx)
 	verifyRoot := filepath.Join(cfg.StateDir, "verify", fmt.Sprintf("runner-%d", time.Now().UnixNano()))
-	socketDir := filepath.Join(verifyRoot, "socket")
 	homeDir := filepath.Join(verifyRoot, "home")
-	if err := os.MkdirAll(socketDir, 0o700); err != nil {
-		return fmt.Errorf("runner runtime verify socket dir: %w", err)
-	}
 	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		return fmt.Errorf("runner runtime verify home dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(verifyRoot) }()
 
 	containerHome := "/centaurx"
-	containerSocketDir := path.Join(containerHome, "verify")
-	socketPath := filepath.Join(socketDir, "runner.sock")
+	containerSocketDir := path.Join(containerHome, "socket")
+	socketPath := filepath.Join(homeDir, "socket", "runner.sock")
 	containerSocketPath := path.Join(containerSocketDir, "runner.sock")
 
 	env := map[string]string{
@@ -332,7 +328,6 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		ResourceCaps:   runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, log),
 		Mounts: []shipohoy.Mount{
 			{Source: homeDir, Target: containerHome, ReadOnly: false},
-			{Source: socketDir, Target: containerSocketDir, ReadOnly: false},
 		},
 		Tmpfs: []shipohoy.TmpfsMount{
 			{Target: "/tmp", Options: []string{"mode=1777", "rw"}},
