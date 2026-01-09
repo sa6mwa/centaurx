@@ -991,6 +991,14 @@ func TestSendPromptUsesComputedRepoPath(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("send prompt: %v", err)
 	}
+	if runner.done == nil {
+		t.Fatalf("runner did not start")
+	}
+	select {
+	case <-runner.done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for runner to finish")
+	}
 	want := filepath.Join(repoRoot, "alice", "demo")
 	if runner.lastRun.WorkingDir != want {
 		t.Fatalf("expected working dir %q, got %q", want, runner.lastRun.WorkingDir)
@@ -1083,16 +1091,42 @@ func (usageRunner) RunCommand(context.Context, RunCommandRequest) (CommandHandle
 
 type captureRunRunner struct {
 	lastRun RunRequest
+	done    chan struct{}
 }
 
 func (r *captureRunRunner) Run(_ context.Context, req RunRequest) (RunHandle, error) {
 	r.lastRun = req
-	return &workedHandle{}, nil
+	if r.done == nil {
+		r.done = make(chan struct{})
+	}
+	return &captureRunHandle{done: r.done}, nil
 }
 
 func (*captureRunRunner) RunCommand(context.Context, RunCommandRequest) (CommandHandle, error) {
 	return nil, errors.New("command not supported")
 }
+
+type captureRunHandle struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func (h *captureRunHandle) Events() EventStream { return &workedStream{} }
+
+func (h *captureRunHandle) Signal(context.Context, ProcessSignal) error {
+	return nil
+}
+
+func (h *captureRunHandle) Wait(context.Context) (RunResult, error) {
+	h.once.Do(func() {
+		if h.done != nil {
+			close(h.done)
+		}
+	})
+	return RunResult{ExitCode: 0}, nil
+}
+
+func (h *captureRunHandle) Close() error { return nil }
 
 type capturingRunner struct {
 	stream *blockingStream

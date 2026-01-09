@@ -31,26 +31,29 @@ const (
 
 // Config configures the runner container provider.
 type Config struct {
-	Image             string
-	RepoRoot          string
-	RunnerRepoRoot    string
-	HostRepoRoot      string
-	HostStateDir      string
-	SockDir           string
-	StateDir          string
-	SkelData          userhome.TemplateData
-	SSHAgentDir       string
-	RunnerBinary      string
-	RunnerArgs        []string
-	RunnerEnv         map[string]string
-	GitSSHDebug       bool
-	IdleTimeout       time.Duration
-	KeepaliveInterval time.Duration
-	KeepaliveMisses   int
-	NamePrefix        string
-	LogBufferBytes    int
-	SocketWait        time.Duration
-	SocketRetryWait   time.Duration
+	Image              string
+	RepoRoot           string
+	RunnerRepoRoot     string
+	HostRepoRoot       string
+	HostStateDir       string
+	SockDir            string
+	StateDir           string
+	SkelData           userhome.TemplateData
+	SSHAgentDir        string
+	RunnerBinary       string
+	RunnerArgs         []string
+	RunnerEnv          map[string]string
+	GitSSHDebug        bool
+	IdleTimeout        time.Duration
+	KeepaliveInterval  time.Duration
+	KeepaliveMisses    int
+	NamePrefix         string
+	LogBufferBytes     int
+	SocketWait         time.Duration
+	SocketRetryWait    time.Duration
+	CgroupParent       string
+	GroupCPUPercent    int
+	GroupMemoryPercent int
 }
 
 // Provider manages per-tab runner containers.
@@ -120,6 +123,7 @@ func NewProvider(ctx context.Context, cfg Config, rt shipohoy.Runtime, agents *s
 	if strings.TrimSpace(cfg.SSHAgentDir) == "" {
 		return nil, errors.New("ssh agent directory is required")
 	}
+	applyGroupLimits(&cfg, pslog.Ctx(ctx))
 
 	if strings.TrimSpace(cfg.HostRepoRoot) != "" {
 		runnerRoot := filepath.Clean(cfg.RunnerRepoRoot)
@@ -398,6 +402,7 @@ func (p *Provider) startRunner(ctx context.Context, key tabKey) (*runnergrpc.Cli
 		ReadOnlyRootfs: true,
 		AutoRemove:     true,
 		LogBufferBytes: p.cfg.LogBufferBytes,
+		CgroupParent:   p.cfg.CgroupParent,
 		Mounts: []shipohoy.Mount{
 			{Source: hostRepoRoot, Target: containerRepoRoot, ReadOnly: false},
 			{Source: hostHomePath, Target: defaultContainerHome, ReadOnly: false},

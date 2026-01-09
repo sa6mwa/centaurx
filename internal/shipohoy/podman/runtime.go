@@ -514,6 +514,9 @@ func (r *Runtime) createContainer(ctx context.Context, spec shipohoy.ContainerSp
 			hostConfig["NanoCPUs"] = spec.ResourceCaps.NanoCPUs
 		}
 	}
+	if spec.CgroupParent != "" {
+		hostConfig["CgroupParent"] = spec.CgroupParent
+	}
 	if binds := buildBinds(spec.Mounts); len(binds) > 0 {
 		hostConfig["Binds"] = binds
 	}

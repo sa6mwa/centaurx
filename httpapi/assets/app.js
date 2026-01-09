@@ -51,9 +51,13 @@
   const ABOUT_LINK_MARKER = '\u0019';
   const tabWindow = window.CentaurxTabWindow || {};
   const STREAM_SESSION_CHECK_COOLDOWN_MS = 15000;
+  const SESSION_VALIDATE_COOLDOWN_MS = 15000;
   let sessionInvalidated = false;
+  let sessionSuspended = false;
   let streamSessionCheckInFlight = false;
   let streamSessionCheckAfter = 0;
+  let sessionValidationInFlight = false;
+  let sessionValidationAfter = 0;
 
   class ApiError extends Error {
     constructor(message, status) {
@@ -76,10 +80,7 @@
     tabWindowStart: 0,
   };
 
-  async function api(path, options = {}) {
-    if (sessionInvalidated && path !== 'api/login') {
-      throw new ApiError('session expired', 401);
-    }
+  async function fetchJson(path, options = {}, handle401 = true) {
     const res = await fetch(path, {
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -89,18 +90,28 @@
       const err = await res.json().catch(() => ({ error: 'request failed' }));
       const message = err.error || 'request failed';
       const apiErr = new ApiError(message, res.status);
-      if (apiErr.status === 401 && path !== 'api/login') {
-        handleInvalidSession('session expired');
+      if (apiErr.status === 401 && handle401 && path !== 'api/login') {
+        queueSessionValidation('session expired');
       }
       throw apiErr;
     }
     return res.json();
   }
 
+  async function api(path, options = {}) {
+    if (sessionInvalidated && path !== 'api/login') {
+      throw new ApiError('session expired', 401);
+    }
+    if (sessionSuspended && path !== 'api/login') {
+      throw new ApiError('session check in progress', 401);
+    }
+    return fetchJson(path, options, true);
+  }
+
   async function checkSession() {
     try {
-      const data = await api('api/me');
-      clearSessionInvalidated();
+      const data = await fetchJson('api/me', {}, false);
+      clearSessionState();
       state.user = data.username;
       showTerminal();
       startStream();
@@ -113,6 +124,7 @@
     if (sessionInvalidated) return;
     const hadSession = Boolean(state.user);
     sessionInvalidated = true;
+    sessionSuspended = false;
     stopStream();
     resetClientState();
     showLogin();
@@ -121,8 +133,9 @@
     }
   }
 
-  function clearSessionInvalidated() {
+  function clearSessionState() {
     sessionInvalidated = false;
+    sessionSuspended = false;
     if (loginError) loginError.textContent = '';
   }
 
@@ -261,12 +274,42 @@
     if (streamSessionCheckInFlight || now < streamSessionCheckAfter) return;
     streamSessionCheckInFlight = true;
     try {
-      await api('api/me');
-    } catch (err) {
-      if (isSessionError(err)) return;
+      await validateSession('stream disconnected');
     } finally {
       streamSessionCheckInFlight = false;
       streamSessionCheckAfter = Date.now() + STREAM_SESSION_CHECK_COOLDOWN_MS;
+    }
+  }
+
+  function queueSessionValidation(reason) {
+    sessionSuspended = true;
+    setStatus(reason || 'session check in progress', 'warn');
+    void validateSession(reason);
+  }
+
+  async function validateSession(reason) {
+    if (sessionInvalidated) return;
+    const now = Date.now();
+    if (sessionValidationInFlight || now < sessionValidationAfter) return;
+    sessionValidationInFlight = true;
+    stopStream();
+    try {
+      await fetchJson('api/me', {}, false);
+      sessionSuspended = false;
+      setStatus('');
+      if (state.user) {
+        startStream();
+      }
+    } catch (err) {
+      if (isSessionError(err)) {
+        handleInvalidSession('session expired');
+      } else {
+        sessionSuspended = false;
+        setStatus('api timeout', 'warn');
+      }
+    } finally {
+      sessionValidationInFlight = false;
+      sessionValidationAfter = Date.now() + SESSION_VALIDATE_COOLDOWN_MS;
     }
   }
 
@@ -426,7 +469,7 @@
         return err;
       }
     }
-    sessionInvalidated = false;
+    clearSessionState();
     stopStream();
     resetClientState();
     showLogin();
@@ -469,7 +512,7 @@
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      clearSessionInvalidated();
+      clearSessionState();
       state.user = data.username;
       showTerminal();
       startStream();
@@ -840,7 +883,7 @@
   });
 
   function startStream() {
-    if (state.eventSource || sessionInvalidated || !state.user) return;
+    if (state.eventSource || sessionInvalidated || sessionSuspended || !state.user) return;
     state.eventSource = new EventSource('api/stream');
     state.eventSource.onmessage = (e) => {
       if (!e.data) return;

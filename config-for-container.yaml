@@ -24,6 +24,10 @@ runner:
     idle_timeout_hours: 8
     keepalive_interval_seconds: 10
     keepalive_misses: 3
+    limits:
+        cgroup_parent: centaurx-runner
+        group_cpu_percent: 70
+        group_memory_percent: 70
     podman:
         address: unix:///cx/podman.sock
         userns_mode: keep-id

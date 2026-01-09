@@ -129,6 +129,9 @@ func DefaultFilesWithOptions(opts Options) (Files, *Assets, error) {
 	cfg.Runner.Binary = "codex"
 	cfg.Runner.KeepaliveIntervalSeconds = 10
 	cfg.Runner.KeepaliveMisses = 3
+	cfg.Runner.Limits.CgroupParent = "centaurx-runner"
+	cfg.Runner.Limits.GroupCPUPercent = 70
+	cfg.Runner.Limits.GroupMemoryPercent = 70
 	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
 	tag := resolveImageTag("")
 	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
@@ -210,6 +213,9 @@ func DefaultRepoBundleWithOptions(opts Options) (Files, *Assets, error) {
 	cfg.Runner.Binary = "codex"
 	cfg.Runner.KeepaliveIntervalSeconds = 10
 	cfg.Runner.KeepaliveMisses = 3
+	cfg.Runner.Limits.CgroupParent = "centaurx-runner"
+	cfg.Runner.Limits.GroupCPUPercent = 70
+	cfg.Runner.Limits.GroupMemoryPercent = 70
 	cfg.Runner.Podman.Address = "unix:///cx/podman.sock"
 	tag := resolveImageTag("")
 	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)

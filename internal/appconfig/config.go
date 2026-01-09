@@ -57,6 +57,7 @@ type RunnerConfig struct {
 	BuildKit                 BuildKitConfig    `mapstructure:"buildkit" yaml:"buildkit"`
 	BuildTimeout             int               `mapstructure:"build_timeout_minutes" yaml:"build_timeout_minutes"`
 	PullTimeout              int               `mapstructure:"pull_timeout_minutes" yaml:"pull_timeout_minutes"`
+	Limits                   RunnerLimits      `mapstructure:"limits" yaml:"limits"`
 }
 
 // HTTPConfig configures the HTTP server.
@@ -113,6 +114,13 @@ type PodmanConfig struct {
 // BuildKitConfig configures the BuildKit endpoint.
 type BuildKitConfig struct {
 	Address string `mapstructure:"address" yaml:"address"`
+}
+
+// RunnerLimits configures group resource caps for runner containers.
+type RunnerLimits struct {
+	CgroupParent       string `mapstructure:"cgroup_parent" yaml:"cgroup_parent"`
+	GroupCPUPercent    int    `mapstructure:"group_cpu_percent" yaml:"group_cpu_percent"`
+	GroupMemoryPercent int    `mapstructure:"group_memory_percent" yaml:"group_memory_percent"`
 }
 
 // DefaultConfig returns a config with sensible defaults.

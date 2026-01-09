@@ -1,5 +1,6 @@
 package systems.pkt.centaurx.viewmodel
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -29,6 +30,9 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     private val streamReady = MutableStateFlow(false)
     private var sessionEpoch: Long = 0
     private var lastActiveTabId: String? = null
+    private var sessionSuspended: Boolean = false
+    private var sessionValidationJob: Job? = null
+    private var sessionValidationAfterMs: Long = 0
 
     init {
         viewModelScope.launch {
@@ -106,6 +110,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
             try {
                 val resp = repository.login(username, password, totp)
                 bumpSessionEpoch()
+                sessionSuspended = false
                 _state.update {
                     it.copy(
                         username = resp.username,
@@ -131,6 +136,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         viewModelScope.launch {
             bumpSessionEpoch()
             val epoch = sessionEpoch
+            sessionSuspended = false
             setBusy(true)
             try {
                 repository.logout()
@@ -153,6 +159,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     ) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             setBusy(true)
             _state.update { it.copy(chpasswdError = null) }
             try {
@@ -171,6 +178,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun uploadCodexAuth(rawJson: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             setBusy(true)
             _state.update { it.copy(codexAuthError = null) }
             try {
@@ -189,6 +197,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun rotateSSHKey(confirmation: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             setBusy(true)
             _state.update { it.copy(rotateSSHKeyError = null) }
             if (confirmation.trim() != "YES") {
@@ -212,6 +221,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun activateTab(tabId: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             try {
                 repository.activateTab(tabId)
                 _state.update { it.copy(activeTabId = tabId, status = null) }
@@ -227,6 +237,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun submitPrompt(tabId: String?, input: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             setBusy(true)
             try {
                 awaitStreamReady()
@@ -255,6 +266,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun loadHistory(tabId: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             try {
                 val resp = repository.getHistory(tabId)
                 _state.update { state ->
@@ -272,6 +284,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     fun loadBuffer(tabId: String) {
         viewModelScope.launch {
             val epoch = sessionEpoch
+            if (blockWhileSessionSuspended()) return@launch
             try {
                 val buffer = repository.getBuffer(tabId, MAX_LINES).buffer
                 _state.update { state ->
@@ -334,6 +347,7 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         try {
             val resp = repository.me()
             bumpSessionEpoch()
+            sessionSuspended = false
             _state.update {
                 it.copy(
                     username = resp.username,
@@ -546,6 +560,9 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         lastSeq = 0
         stopBufferPolling()
         streamReady.value = false
+        sessionSuspended = false
+        sessionValidationJob?.cancel()
+        sessionValidationJob = null
         lastActiveTabId = _state.value.activeTabId
         _state.update {
             it.copy(
@@ -581,7 +598,9 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
             return true
         }
         stopStream()
-        resetClientState("session expired")
+        stopBufferPolling()
+        sessionSuspended = true
+        scheduleSessionValidation(epoch)
         return true
     }
 
@@ -613,6 +632,44 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
     private fun stopBufferPolling() {
         bufferPollJob?.cancel()
         bufferPollJob = null
+    }
+
+    private fun scheduleSessionValidation(epoch: Long) {
+        val now = SystemClock.elapsedRealtime()
+        if (sessionValidationJob?.isActive == true || now < sessionValidationAfterMs) {
+            return
+        }
+        sessionValidationJob = viewModelScope.launch {
+            try {
+                repository.me()
+                if (epoch != sessionEpoch) return@launch
+                sessionSuspended = false
+                startStream()
+                refreshSnapshotAfterLogin()
+            } catch (err: ApiException) {
+                if (epoch != sessionEpoch) return@launch
+                if (err.statusCode == 401) {
+                    sessionSuspended = false
+                    resetClientState("session expired")
+                } else {
+                    setStatus("api timeout", StatusLevel.Warn)
+                    sessionSuspended = false
+                }
+            } catch (_: Exception) {
+                if (epoch != sessionEpoch) return@launch
+                setStatus("api timeout", StatusLevel.Warn)
+                sessionSuspended = false
+            } finally {
+                sessionValidationAfterMs = SystemClock.elapsedRealtime() + SESSION_VALIDATE_COOLDOWN_MS
+                sessionValidationJob = null
+            }
+        }
+    }
+
+    private fun blockWhileSessionSuspended(): Boolean {
+        if (!sessionSuspended) return false
+        setStatus("session check in progress", StatusLevel.Warn)
+        return true
     }
 
     private suspend fun refreshSnapshotFallback() {
@@ -688,5 +745,6 @@ class AppViewModel(private val repository: CentaurxClient) : ViewModel() {
         private const val BUFFER_POLL_MS = 3000L
         private const val STREAM_DISCONNECTED_MESSAGE = "stream disconnected (polling output)"
         private const val STREAM_READY_TIMEOUT_MS = 8000L
+        private const val SESSION_VALIDATE_COOLDOWN_MS = 15000L
     }
 }
