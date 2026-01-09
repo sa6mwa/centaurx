@@ -304,6 +304,16 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 	socketPath := filepath.Join(homeDir, "socket", "runner.sock")
 	containerSocketPath := path.Join(containerSocketDir, "runner.sock")
 	log.Debug("runner runtime verify socket paths", "host_socket", socketPath, "container_socket", containerSocketPath)
+	hostSocketDir := filepath.Dir(socketPath)
+	if err := os.MkdirAll(hostSocketDir, 0o700); err != nil {
+		return fmt.Errorf("runner runtime verify socket dir: %w", err)
+	}
+	sentinelName := ".verify"
+	sentinelPath := filepath.Join(hostSocketDir, sentinelName)
+	if err := os.WriteFile(sentinelPath, []byte("ok"), 0o600); err != nil {
+		return fmt.Errorf("runner runtime verify sentinel: %w", err)
+	}
+	defer func() { _ = os.Remove(sentinelPath) }()
 
 	env := map[string]string{
 		"HOME":            containerHome,
@@ -326,7 +336,8 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		Env:            env,
 		WorkingDir:     containerHome,
 		ReadOnlyRootfs: true,
-		AutoRemove:     true,
+		AutoRemove:     false,
+		LogBufferBytes: 64 * 1024,
 		ResourceCaps:   runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, log),
 		Mounts: []shipohoy.Mount{
 			{Source: homeDir, Target: containerHome, ReadOnly: false},
@@ -352,6 +363,14 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		_ = rt.Remove(stopCtx, handle)
 		stopCancel()
 	}()
+
+	checkCtx, checkCancel := context.WithTimeout(ctx, 5*time.Second)
+	checkErr := verifyRunnerSocketMount(checkCtx, rt, handle, containerSocketDir, sentinelName)
+	checkCancel()
+	if checkErr != nil {
+		log.Warn("runner runtime verify socket mount failed", "err", checkErr)
+		return checkErr
+	}
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer waitCancel()
@@ -451,6 +470,21 @@ func waitForVerifySocket(ctx context.Context, socketPath string, interval time.D
 		}
 		time.Sleep(interval)
 	}
+}
+
+func verifyRunnerSocketMount(ctx context.Context, rt shipohoy.Runtime, handle shipohoy.Handle, socketDir, sentinel string) error {
+	cmd := fmt.Sprintf("test -d %s && test -w %s && test -f %s", socketDir, socketDir, path.Join(socketDir, sentinel))
+	res, err := rt.Exec(ctx, handle, shipohoy.ExecSpec{
+		Command: []string{"sh", "-c", cmd},
+		Timeout: 5 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("runner runtime verify failed (socket mount check): %w", err)
+	}
+	if res.ExitCode != 0 {
+		return fmt.Errorf("runner runtime verify failed (socket mount check exit %d)", res.ExitCode)
+	}
+	return nil
 }
 
 type verifyLogTailer interface {
