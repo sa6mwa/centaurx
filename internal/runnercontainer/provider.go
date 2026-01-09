@@ -50,31 +50,31 @@ func parseContainerScope(value string) containerScope {
 
 // Config configures the runner container provider.
 type Config struct {
-	Image              string
-	RepoRoot           string
-	RunnerRepoRoot     string
-	HostRepoRoot       string
-	HostStateDir       string
-	SockDir            string
-	StateDir           string
-	SkelData           userhome.TemplateData
-	SSHAgentDir        string
-	RunnerBinary       string
-	RunnerArgs         []string
-	RunnerEnv          map[string]string
-	GitSSHDebug        bool
-	ContainerScope     string
-	ExecNice           int
-	CommandNice        int
-	IdleTimeout        time.Duration
-	KeepaliveInterval  time.Duration
-	KeepaliveMisses    int
-	NamePrefix         string
-	LogBufferBytes     int
-	SocketWait         time.Duration
-	SocketRetryWait    time.Duration
-	CPUPercent         int
-	MemoryPercent      int
+	Image             string
+	RepoRoot          string
+	RunnerRepoRoot    string
+	HostRepoRoot      string
+	HostStateDir      string
+	SockDir           string
+	StateDir          string
+	SkelData          userhome.TemplateData
+	SSHAgentDir       string
+	RunnerBinary      string
+	RunnerArgs        []string
+	RunnerEnv         map[string]string
+	GitSSHDebug       bool
+	ContainerScope    string
+	ExecNice          int
+	CommandNice       int
+	IdleTimeout       time.Duration
+	KeepaliveInterval time.Duration
+	KeepaliveMisses   int
+	NamePrefix        string
+	LogBufferBytes    int
+	SocketWait        time.Duration
+	SocketRetryWait   time.Duration
+	CPUPercent        int
+	MemoryPercent     int
 }
 
 // Provider manages per-tab runner containers.
@@ -150,7 +150,7 @@ func NewProvider(ctx context.Context, cfg Config, rt shipohoy.Runtime, agents *s
 	if scope == scopeUnknown {
 		return nil, fmt.Errorf("runner.container_scope must be \"user\" or \"tab\"")
 	}
-	caps := resourceCapsFromPercent(cfg.CPUPercent, cfg.MemoryPercent, pslog.Ctx(ctx))
+	caps := ResourceCapsFromPercent(cfg.CPUPercent, cfg.MemoryPercent, pslog.Ctx(ctx))
 
 	if strings.TrimSpace(cfg.HostRepoRoot) != "" {
 		runnerRoot := filepath.Clean(cfg.RunnerRepoRoot)

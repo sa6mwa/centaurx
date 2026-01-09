@@ -81,8 +81,9 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 			logger.Info("runner image verify ok", "image", cfg.Runner.Image)
+			caps := runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, logger)
 			logger.Info("runner runtime verify start", "image", cfg.Runner.Image, "binary", cfg.Runner.Binary)
-			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg.Runner.Image, cfg.Runner.Binary, cfg.Runner.Args, cfg.Runner.Env); err != nil {
+			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg.Runner.Image, cfg.Runner.Binary, cfg.Runner.Args, cfg.Runner.Env, caps); err != nil {
 				return err
 			}
 			logger.Info("runner runtime verify ok", "binary", cfg.Runner.Binary)
@@ -117,27 +118,27 @@ func newServeCmd() *cobra.Command {
 				DisableAuditLogging: cfg.Logging.DisableAuditTrails,
 			}
 			runnerProvider, err := runnercontainer.NewProvider(cmd.Context(), runnercontainer.Config{
-				Image:              cfg.Runner.Image,
-				RepoRoot:           cfg.RepoRoot,
-				RunnerRepoRoot:     cfg.Runner.RepoRoot,
-				HostRepoRoot:       cfg.Runner.HostRepoRoot,
-				HostStateDir:       cfg.Runner.HostStateDir,
-				SockDir:            cfg.Runner.SockDir,
-				StateDir:           cfg.StateDir,
-				SkelData:           userhome.DefaultTemplateData(cfg),
-				SSHAgentDir:        cfg.SSH.AgentDir,
-				RunnerBinary:       cfg.Runner.Binary,
-				RunnerArgs:         cfg.Runner.Args,
-				RunnerEnv:          cfg.Runner.Env,
-				GitSSHDebug:        cfg.Runner.GitSSHDebug,
-				ContainerScope:     cfg.Runner.ContainerScope,
-				ExecNice:           cfg.Runner.ExecNice,
-				CommandNice:        cfg.Runner.CommandNice,
-				IdleTimeout:        time.Duration(cfg.Runner.IdleTimeout) * time.Hour,
-				KeepaliveInterval:  time.Duration(cfg.Runner.KeepaliveIntervalSeconds) * time.Second,
-				KeepaliveMisses:    cfg.Runner.KeepaliveMisses,
-				CPUPercent:         cfg.Runner.Limits.CPUPercent,
-				MemoryPercent:      cfg.Runner.Limits.MemoryPercent,
+				Image:             cfg.Runner.Image,
+				RepoRoot:          cfg.RepoRoot,
+				RunnerRepoRoot:    cfg.Runner.RepoRoot,
+				HostRepoRoot:      cfg.Runner.HostRepoRoot,
+				HostStateDir:      cfg.Runner.HostStateDir,
+				SockDir:           cfg.Runner.SockDir,
+				StateDir:          cfg.StateDir,
+				SkelData:          userhome.DefaultTemplateData(cfg),
+				SSHAgentDir:       cfg.SSH.AgentDir,
+				RunnerBinary:      cfg.Runner.Binary,
+				RunnerArgs:        cfg.Runner.Args,
+				RunnerEnv:         cfg.Runner.Env,
+				GitSSHDebug:       cfg.Runner.GitSSHDebug,
+				ContainerScope:    cfg.Runner.ContainerScope,
+				ExecNice:          cfg.Runner.ExecNice,
+				CommandNice:       cfg.Runner.CommandNice,
+				IdleTimeout:       time.Duration(cfg.Runner.IdleTimeout) * time.Hour,
+				KeepaliveInterval: time.Duration(cfg.Runner.KeepaliveIntervalSeconds) * time.Second,
+				KeepaliveMisses:   cfg.Runner.KeepaliveMisses,
+				CPUPercent:        cfg.Runner.Limits.CPUPercent,
+				MemoryPercent:     cfg.Runner.Limits.MemoryPercent,
 			}, rt, agentManager)
 			if err != nil {
 				return err
@@ -285,7 +286,7 @@ func ensureUserHomes(cfg appconfig.Config, logger pslog.Logger) error {
 	return nil
 }
 
-func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, image, binary string, args []string, env map[string]string) error {
+func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, image, binary string, args []string, env map[string]string, caps *shipohoy.ResourceCaps) error {
 	if strings.TrimSpace(binary) == "" {
 		binary = "codex"
 	}
@@ -318,6 +319,7 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, image, binary
 			Command:        cmd,
 			ReadOnlyRootfs: true,
 			AutoRemove:     true,
+			ResourceCaps:   caps,
 			Tmpfs: []shipohoy.TmpfsMount{
 				{Target: "/tmp", Options: []string{"mode=1777", "rw"}},
 				{Target: "/run", Options: []string{"mode=0755", "rw"}},

@@ -14,7 +14,7 @@ import (
 	"pkt.systems/pslog"
 )
 
-func resourceCapsFromPercent(cpuPercent, memoryPercent int, logger pslog.Logger) *shipohoy.ResourceCaps {
+func ResourceCapsFromPercent(cpuPercent, memoryPercent int, logger pslog.Logger) *shipohoy.ResourceCaps {
 	var caps shipohoy.ResourceCaps
 	if cpuNano, ok := nanoCPUsFromPercent(runtime.NumCPU(), cpuPercent); ok {
 		caps.NanoCPUs = cpuNano
