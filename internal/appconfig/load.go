@@ -94,12 +94,6 @@ func Load(path string) (Config, error) {
 		if v.GetInt("config_version") != CurrentConfigVersion {
 			return Config{}, fmt.Errorf("unsupported config_version %d; expected %d", v.GetInt("config_version"), CurrentConfigVersion)
 		}
-		if v.IsSet("runner.limits.group_cpu_percent") && !v.IsSet("runner.limits.cpu_percent") {
-			v.Set("runner.limits.cpu_percent", v.GetInt("runner.limits.group_cpu_percent"))
-		}
-		if v.IsSet("runner.limits.group_memory_percent") && !v.IsSet("runner.limits.memory_percent") {
-			v.Set("runner.limits.memory_percent", v.GetInt("runner.limits.group_memory_percent"))
-		}
 		if v.IsSet("runner.use_stdin_prompt") {
 			return Config{}, fmt.Errorf("runner.use_stdin_prompt is not supported; prompts must use stdin")
 		}
