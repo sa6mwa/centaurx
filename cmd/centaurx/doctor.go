@@ -65,8 +65,7 @@ func newDoctorCmd() *cobra.Command {
 			}
 			logger.Info("doctor runner image ok", "image", cfg.Runner.Image)
 
-			caps := runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, logger)
-			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg.Runner.Image, cfg.Runner.Binary, cfg.Runner.Args, cfg.Runner.Env, caps); err != nil {
+			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg); err != nil {
 				return err
 			}
 			logger.Info("doctor runner runtime ok", "binary", cfg.Runner.Binary)

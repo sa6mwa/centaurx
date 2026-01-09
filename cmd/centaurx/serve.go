@@ -6,8 +6,11 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -21,6 +24,7 @@ import (
 	"pkt.systems/centaurx/internal/appconfig"
 	"pkt.systems/centaurx/internal/auth"
 	"pkt.systems/centaurx/internal/runnercontainer"
+	"pkt.systems/centaurx/internal/runnergrpc"
 	"pkt.systems/centaurx/internal/shipohoy"
 	"pkt.systems/centaurx/internal/sshagent"
 	"pkt.systems/centaurx/internal/sshkeys"
@@ -81,9 +85,8 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 			logger.Info("runner image verify ok", "image", cfg.Runner.Image)
-			caps := runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, logger)
 			logger.Info("runner runtime verify start", "image", cfg.Runner.Image, "binary", cfg.Runner.Binary)
-			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg.Runner.Image, cfg.Runner.Binary, cfg.Runner.Args, cfg.Runner.Env, caps); err != nil {
+			if err := verifyRunnerRuntime(cmd.Context(), rt, cfg); err != nil {
 				return err
 			}
 			logger.Info("runner runtime verify ok", "binary", cfg.Runner.Binary)
@@ -286,84 +289,158 @@ func ensureUserHomes(cfg appconfig.Config, logger pslog.Logger) error {
 	return nil
 }
 
-func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, image, binary string, args []string, env map[string]string, caps *shipohoy.ResourceCaps) error {
-	if strings.TrimSpace(binary) == "" {
-		binary = "codex"
-	}
+func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig.Config) error {
 	log := pslog.Ctx(ctx)
-	if !strings.Contains(binary, "/") {
-		binary = "/usr/bin/" + strings.TrimSpace(binary)
+	verifyRoot := filepath.Join(cfg.StateDir, "verify", fmt.Sprintf("runner-%d", time.Now().UnixNano()))
+	socketDir := filepath.Join(verifyRoot, "socket")
+	homeDir := filepath.Join(verifyRoot, "home")
+	if err := os.MkdirAll(socketDir, 0o700); err != nil {
+		return fmt.Errorf("runner runtime verify socket dir: %w", err)
 	}
-	if strings.TrimSpace(binary) == "" {
-		binary = "/usr/bin/codex"
+	if err := os.MkdirAll(homeDir, 0o700); err != nil {
+		return fmt.Errorf("runner runtime verify home dir: %w", err)
 	}
-	checkEnv := map[string]string{
-		"HOME":            "/centaurx",
-		"XDG_CACHE_HOME":  "/centaurx/.cache",
-		"XDG_CONFIG_HOME": "/centaurx/.config",
-		"XDG_DATA_HOME":   "/centaurx/.local/share",
+	defer func() { _ = os.RemoveAll(verifyRoot) }()
+
+	containerHome := "/centaurx"
+	containerSocketDir := path.Join(containerHome, "verify")
+	socketPath := filepath.Join(socketDir, "runner.sock")
+	containerSocketPath := path.Join(containerSocketDir, "runner.sock")
+
+	env := map[string]string{
+		"HOME":            containerHome,
+		"XDG_CACHE_HOME":  path.Join(containerHome, ".cache"),
+		"XDG_CONFIG_HOME": path.Join(containerHome, ".config"),
+		"XDG_DATA_HOME":   path.Join(containerHome, ".local", "share"),
 		"PATH":            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 	}
-	for key, value := range env {
+	for key, value := range cfg.Runner.Env {
 		if strings.TrimSpace(value) != "" {
-			checkEnv[key] = value
+			env[key] = value
 		}
 	}
-	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
-		name := fmt.Sprintf("centaurx-check-%d-%d", time.Now().UnixNano(), attempt)
-		cmd := []string{"sleep", "600"}
-		spec := shipohoy.ContainerSpec{
-			Name:           name,
-			Image:          image,
-			Command:        cmd,
-			ReadOnlyRootfs: true,
-			AutoRemove:     true,
-			ResourceCaps:   caps,
-			Tmpfs: []shipohoy.TmpfsMount{
-				{Target: "/tmp", Options: []string{"mode=1777", "rw"}},
-				{Target: "/run", Options: []string{"mode=0755", "rw"}},
-				{Target: "/var/run", Options: []string{"mode=0755", "rw"}},
-				{Target: "/var/tmp", Options: []string{"mode=1777", "rw"}},
-			},
-			Labels: map[string]string{"centaurx.check": "true"},
-		}
-		handle, err := rt.EnsureRunning(ctx, spec)
-		if err != nil {
-			lastErr = fmt.Errorf("runner image sanity check failed (start): %w", err)
-			log.Warn("runner runtime verify retry", "attempt", attempt, "err", err)
-			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
-			continue
-		}
-		var output bytes.Buffer
-		execCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		res, err := rt.Exec(execCtx, handle, shipohoy.ExecSpec{
-			Command: []string{binary, "-V"},
-			Env:     checkEnv,
-			Stdout:  &output,
-			Stderr:  &output,
-			Timeout: 10 * time.Second,
-		})
-		cancel()
+
+	name := fmt.Sprintf("centaurx-verify-%d", time.Now().UnixNano())
+	spec := shipohoy.ContainerSpec{
+		Name:           name,
+		Image:          cfg.Runner.Image,
+		Command:        runnerVerifyCommand(cfg, containerSocketPath),
+		Env:            env,
+		WorkingDir:     containerHome,
+		ReadOnlyRootfs: true,
+		AutoRemove:     true,
+		ResourceCaps:   runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, log),
+		Mounts: []shipohoy.Mount{
+			{Source: homeDir, Target: containerHome, ReadOnly: false},
+			{Source: socketDir, Target: containerSocketDir, ReadOnly: false},
+		},
+		Tmpfs: []shipohoy.TmpfsMount{
+			{Target: "/tmp", Options: []string{"mode=1777", "rw"}},
+			{Target: "/run", Options: []string{"mode=0755", "rw"}},
+			{Target: "/var/run", Options: []string{"mode=0755", "rw"}},
+			{Target: "/var/tmp", Options: []string{"mode=1777", "rw"}},
+		},
+		Labels: map[string]string{"centaurx.check": "true"},
+	}
+
+	handle, err := rt.EnsureRunning(ctx, spec)
+	if err != nil {
+		return fmt.Errorf("runner runtime verify failed (start): %w", err)
+	}
+	defer func() {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = rt.Stop(stopCtx, handle)
 		_ = rt.Remove(stopCtx, handle)
 		stopCancel()
-		if err != nil {
-			lastErr = fmt.Errorf("runner image sanity check failed (%s -V): %w (output: %s)", binary, err, strings.TrimSpace(output.String()))
-			log.Warn("runner runtime verify retry", "attempt", attempt, "err", err, "output", strings.TrimSpace(output.String()))
-			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
-			continue
-		}
-		if res.ExitCode != 0 {
-			lastErr = fmt.Errorf("runner image sanity check failed (%s -V exit %d): %s", binary, res.ExitCode, strings.TrimSpace(output.String()))
-			log.Warn("runner runtime verify retry", "attempt", attempt, "exit_code", res.ExitCode, "output", strings.TrimSpace(output.String()))
-			time.Sleep(time.Duration(attempt) * 200 * time.Millisecond)
-			continue
-		}
-		return nil
+	}()
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer waitCancel()
+	if err := waitForVerifySocket(waitCtx, socketPath, 200*time.Millisecond); err != nil {
+		return fmt.Errorf("runner runtime verify failed (socket): %w", err)
 	}
-	return lastErr
+
+	client, err := runnergrpc.Dial(ctx, socketPath)
+	if err != nil {
+		return fmt.Errorf("runner runtime verify failed (dial): %w", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	command := strings.TrimSpace(cfg.Runner.Binary)
+	if command == "" {
+		command = "codex"
+	}
+	runCtx, runCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer runCancel()
+	handleCmd, err := client.RunCommand(runCtx, core.RunCommandRequest{
+		WorkingDir: containerHome,
+		Command:    fmt.Sprintf("%s -V", command),
+		UseShell:   true,
+	})
+	if err != nil {
+		return fmt.Errorf("runner runtime verify failed (command start): %w", err)
+	}
+	defer handleCmd.Close()
+
+	var output bytes.Buffer
+	stream := handleCmd.Outputs()
+	for {
+		line, err := stream.Next(runCtx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("runner runtime verify failed (command output): %w", err)
+		}
+		if line.Text != "" {
+			output.WriteString(line.Text)
+		}
+	}
+	result, err := handleCmd.Wait(runCtx)
+	if err != nil {
+		return fmt.Errorf("runner runtime verify failed (command wait): %w", err)
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("runner runtime verify failed (%s -V exit %d): %s", command, result.ExitCode, strings.TrimSpace(output.String()))
+	}
+	return nil
+}
+
+func runnerVerifyCommand(cfg appconfig.Config, socketPath string) []string {
+	command := []string{"runner", "--socket-path", socketPath, "--binary", cfg.Runner.Binary}
+	for _, arg := range cfg.Runner.Args {
+		if strings.TrimSpace(arg) == "" {
+			continue
+		}
+		command = append(command, "--arg", arg)
+	}
+	for _, value := range flattenEnv(cfg.Runner.Env) {
+		command = append(command, "--env", value)
+	}
+	if cfg.Runner.ExecNice != 0 {
+		command = append(command, "--exec-nice", fmt.Sprintf("%d", cfg.Runner.ExecNice))
+	}
+	if cfg.Runner.CommandNice != 0 {
+		command = append(command, "--command-nice", fmt.Sprintf("%d", cfg.Runner.CommandNice))
+	}
+	return command
+}
+
+func waitForVerifySocket(ctx context.Context, socketPath string, interval time.Duration) error {
+	if strings.TrimSpace(socketPath) == "" {
+		return errors.New("socket path is required")
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		conn, err := net.Dial("unix", socketPath)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		time.Sleep(interval)
+	}
 }
 
 func validateRunnerConfig(cfg appconfig.Config) error {
