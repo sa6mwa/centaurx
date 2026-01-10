@@ -510,15 +510,17 @@ func logVerifyContainerTail(ctx context.Context, rt shipohoy.Runtime, log pslog.
 		log.Warn("runner runtime verify logs unavailable", "reason", reason, "err", err)
 		return
 	}
-	log.Warn("runner runtime verify logs", "reason", reason, "stdout_lines", len(stdout), "stderr_lines", len(stderr))
-	if len(stdout) > 0 {
-		payload, truncated := formatVerifyLogTail(stdout, 2000)
-		log.Trace("runner runtime verify stdout tail", "truncated", truncated, "tail", payload)
-	}
-	if len(stderr) > 0 {
-		payload, truncated := formatVerifyLogTail(stderr, 2000)
-		log.Trace("runner runtime verify stderr tail", "truncated", truncated, "tail", payload)
-	}
+	stdoutTail, stdoutTruncated := formatVerifyLogTail(stdout, 1000)
+	stderrTail, stderrTruncated := formatVerifyLogTail(stderr, 1000)
+	log.Warn("runner runtime verify logs",
+		"reason", reason,
+		"stdout_lines", len(stdout),
+		"stderr_lines", len(stderr),
+		"stdout_truncated", stdoutTruncated,
+		"stderr_truncated", stderrTruncated,
+		"stdout_tail", strings.TrimSpace(stdoutTail),
+		"stderr_tail", strings.TrimSpace(stderrTail),
+	)
 }
 
 func formatVerifyLogTail(lines []string, maxBytes int) (string, bool) {
