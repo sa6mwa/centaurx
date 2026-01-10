@@ -43,6 +43,20 @@ Codex configuration.
 
 Default ports are `:27480` for the HTTP UI/API and `:27422` for the SSH TUI.
 
+Runner containers are per-user by default. Set `runner.container_scope: tab` to
+isolate each tab in its own container. Resource limits and niceness are
+configurable:
+
+```yaml
+runner:
+  container_scope: user
+  limits:
+    cpu_percent: 70
+    memory_percent: 70
+  exec_nice: 10
+  command_nice: 5
+```
+
 ## Containerization
 Podman is the only fully supported container engine for Centaurx. The bootstrap
 flow generates Containerfiles plus a Podman Kubernetes YAML (`podman.yaml`) for

@@ -5,7 +5,7 @@ metadata:
 spec:
   containers:
     - name: centaurx
-      image: docker.io/pktsystems/centaurx:v0.4.0
+      image: docker.io/pktsystems/centaurx:v0.5.0
       args: ["serve", "-c", "/cx/config-for-container.yaml"]
       env:
         - name: HOME

@@ -42,7 +42,7 @@ Top-level responsibilities by package:
 - `internal/userhome`: per-user home setup and template rendering for .codex/config.toml.
 - `internal/codex`: `codex exec` runner and JSONL stream parsing.
 - `internal/runnergrpc`: gRPC server/client for runner transport.
-- `internal/runnercontainer`: per-tab runner container management.
+- `internal/runnercontainer`: runner container management (per-user by default, per-tab optional).
 - `internal/shipohoy`: container runtime abstraction (Podman, containerd adapters).
 - `httpapi`: HTTP API, static web UI assets, SSE hub, session store.
 - `sshserver`: SSH server and TUI rendering.
@@ -79,7 +79,7 @@ in `.tmpl` are templated and written without the suffix.
    `.ssh/known_hosts` if missing.
 3. Ensures the encrypted SSH key store exists.
 4. Creates a per-user SSH agent manager.
-5. Initializes the runner provider (container-based by default).
+5. Initializes the runner provider (container-based, per-user by default).
 6. Builds the composite server with HTTP and SSH listeners.
 7. Starts HTTP and SSH servers and waits for shutdown.
 
@@ -183,14 +183,22 @@ The runner provider treats repeated ping failures as a signal to close the tab a
 
 ## Runner containers
 
-Runner containers are managed per tab by `internal/runnercontainer.Provider`:
-- One container per (user, tab).
+Runner containers are managed per user by default (`runner.container_scope: user`) by
+`internal/runnercontainer.Provider`:
+- One container per user by default (per-tab when `runner.container_scope: tab`).
 - Read-only root filesystem with tmpfs for `/tmp`, `/run`, `/var/run`, and `/var/tmp`.
 - Mounted paths:
   - Host repo root for the user -> container repo root (default `/repos/<user>`).
   - Host home root for the user -> container home (`/centaurx`).
-  - Per-tab runner socket dir -> container socket dir.
+  - Runner socket dir (per-user or per-tab) -> container socket dir.
   - Per-user SSH agent dir -> container agent dir.
+- Socket paths:
+  - Per-user: `state_dir/runner/<user>/runner.sock`
+  - Per-tab: `state_dir/runner/<user>/<tab>/runner.sock`
+- Resource caps are applied per container from `runner.limits.cpu_percent` and
+  `runner.limits.memory_percent`.
+- Niceness settings (`runner.exec_nice`, `runner.command_nice`) control relative
+  priority of Codex exec vs `!` commands.
 
 Environment inside the container:
 - `HOME=/centaurx` and XDG dirs under `/centaurx`.

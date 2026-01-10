@@ -242,6 +242,8 @@ Server `/z` logic:
 
 ## Transport
 
-- UDS path is config-driven (e.g. `~/.centaurx/state/runner.sock`).
+- UDS path is config-driven and scoped by container mode:
+  - Per-user (default): `~/.centaurx/state/runner/<user>/runner.sock`
+  - Per-tab (`runner.container_scope: tab`): `~/.centaurx/state/runner/<user>/<tab>/runner.sock`
 - File permissions control access (no additional auth).
 - Tests must run without containers: start runner in-process or as a subprocess using a temp UDS.
