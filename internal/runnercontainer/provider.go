@@ -640,10 +640,11 @@ func (p *Provider) startKeepalive(key tabKey, client *runnergrpc.Client) context
 
 func (p *Provider) containerName(key tabKey) string {
 	user := sanitizeName(string(key.user))
-	tab := sanitizeName(string(key.tab))
-	if tab == "" {
+	rawTab := strings.TrimSpace(string(key.tab))
+	if rawTab == "" {
 		return fmt.Sprintf("%s-%s", p.cfg.NamePrefix, user)
 	}
+	tab := sanitizeName(rawTab)
 	return fmt.Sprintf("%s-%s-%s", p.cfg.NamePrefix, user, tab)
 }
 
