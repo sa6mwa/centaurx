@@ -302,6 +302,8 @@ func (s *compositeServer) Stop(ctx context.Context) error {
 	if s.runners != nil {
 		if err := s.runners.CloseAll(context.Background()); err != nil {
 			log.Warn("server runner close failed", "err", err)
+		} else {
+			log.Info("server runner close ok")
 		}
 	}
 	if cancel != nil {

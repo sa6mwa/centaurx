@@ -391,13 +391,22 @@ func (p *Provider) CloseAll(ctx context.Context) error {
 	p.mu.Unlock()
 	p.logger.Info("runner close all requested", "count", len(entries))
 
-	var lastErr error
+	var errs []error
+	stopped := 0
+	failed := 0
 	for _, item := range entries {
 		if err := p.stopRunner(ctx, item.entry, item.key, "shutdown"); err != nil {
-			lastErr = err
+			errs = append(errs, err)
+			failed++
+			continue
 		}
+		stopped++
 	}
-	return lastErr
+	p.logger.Info("runner close all completed", "stopped", stopped, "failed", failed)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (p *Provider) startRunner(ctx context.Context, key tabKey, logTab schema.TabID) (*runnergrpc.Client, core.RunnerInfo, shipohoy.Handle, error) {
@@ -545,19 +554,25 @@ func (p *Provider) stopRunner(ctx context.Context, entry *tabRunner, key tabKey,
 	if entry.keepaliveCancel != nil {
 		entry.keepaliveCancel()
 	}
+	var errs []error
 	if entry.handle != nil {
 		stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		if err := p.rt.Stop(stopCtx, entry.handle); err != nil {
 			log.Warn("runner stop failed", "err", err)
+			errs = append(errs, err)
 		}
 		if err := p.rt.Remove(stopCtx, entry.handle); err != nil {
 			log.Warn("runner remove failed", "err", err)
+			errs = append(errs, err)
 		}
 	}
 	socketDir := filepath.Join(p.cfg.SockDir, string(key.user), string(key.tab))
 	_ = os.RemoveAll(socketDir)
 	log.Info("runner stopped", "reason", reason)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 	return nil
 }
 
