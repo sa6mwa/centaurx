@@ -164,20 +164,25 @@ func newServeCmd() *cobra.Command {
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
-			go func() {
-				<-ctx.Done()
+			serverCtx := pslog.ContextWithLogger(context.Background(), logger)
+			logger.Info("http server listening", "addr", serverCfg.HTTP.Addr)
+			logger.Info("ssh server listening", "addr", serverCfg.SSH.Addr)
+			if err := server.Start(serverCtx); err != nil {
+				return err
+			}
+			waitCh := make(chan error, 1)
+			go func() { waitCh <- server.Wait() }()
+			select {
+			case err := <-waitCh:
+				return err
+			case <-ctx.Done():
 				stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := server.Stop(stopCtx); err != nil {
 					logger.Warn("server stop failed", "err", err)
 				}
-			}()
-			logger.Info("http server listening", "addr", serverCfg.HTTP.Addr)
-			logger.Info("ssh server listening", "addr", serverCfg.SSH.Addr)
-			if err := server.Start(ctx); err != nil {
-				return err
+				return <-waitCh
 			}
-			return server.Wait()
 		},
 	}
 	cmd.Flags().StringVarP(&cfgPath, "config", "c", "", "path to config file")
