@@ -10,6 +10,10 @@ spec:
       env:
         - name: HOME
           value: /centaurx
+        - name: CENTAURX_HOST_STATE_DIR
+          value: {{ .HostStateDir }}
+        - name: CENTAURX_HOST_REPO_ROOT
+          value: {{ .HostRepoDir }}
       ports:
         - containerPort: 27480
           hostPort: 27480

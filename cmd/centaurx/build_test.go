@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"pkt.systems/centaurx/internal/version"
 )
 
 func TestLoadRequiredConfigMissing(t *testing.T) {
@@ -73,5 +75,53 @@ func TestStripImageTag(t *testing.T) {
 		if got := stripImageTag(tc.image); got != tc.want {
 			t.Fatalf("%s: stripImageTag(%q) = %q, want %q", tc.name, tc.image, got, tc.want)
 		}
+	}
+}
+
+func TestBuildRunnerTagsOverride(t *testing.T) {
+	tags, err := buildRunnerTags("docker.io/pktsystems/centaurxrunner:latest", "custom:tag", true)
+	if err != nil {
+		t.Fatalf("buildRunnerTags override: %v", err)
+	}
+	if len(tags) != 1 || tags[0] != "custom:tag" {
+		t.Fatalf("buildRunnerTags override = %v, want [custom:tag]", tags)
+	}
+}
+
+func TestBuildRunnerTagsRedistributable(t *testing.T) {
+	base := "docker.io/pktsystems/centaurxrunner"
+	ver := version.Current()
+	if strings.TrimSpace(ver) == "" {
+		ver = "v0.0.0-unknown"
+	}
+	tags, err := buildRunnerTags(base+":latest", "", true)
+	if err != nil {
+		t.Fatalf("buildRunnerTags redistributable: %v", err)
+	}
+	want := []string{
+		base + ":" + ver + "-redistributable",
+		base + ":redistributable",
+	}
+	if strings.Join(tags, ",") != strings.Join(want, ",") {
+		t.Fatalf("buildRunnerTags redistributable = %v, want %v", tags, want)
+	}
+}
+
+func TestBuildRunnerTagsDefault(t *testing.T) {
+	base := "docker.io/pktsystems/centaurxrunner"
+	ver := version.Current()
+	if strings.TrimSpace(ver) == "" {
+		ver = "v0.0.0-unknown"
+	}
+	tags, err := buildRunnerTags(base+":latest", "", false)
+	if err != nil {
+		t.Fatalf("buildRunnerTags default: %v", err)
+	}
+	want := []string{
+		base + ":" + ver,
+		base + ":latest",
+	}
+	if strings.Join(tags, ",") != strings.Join(want, ",") {
+		t.Fatalf("buildRunnerTags default = %v, want %v", tags, want)
 	}
 }

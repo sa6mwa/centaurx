@@ -3,6 +3,17 @@ set -euo pipefail
 
 log() { printf '[cxrunner-install] %s\n' "$*" >&2; }
 
+is_redistributable() {
+  case "${CX_REDISTRIBUTABLE:-0}" in
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 install_apt_packages() {
   log "Installing base packages..."
   apt-get update
@@ -143,6 +154,10 @@ install_node() {
 }
 
 install_bun() {
+  if is_redistributable; then
+    log "Redistributable build; skipping Bun (LGPL static link compliance not shipped)."
+    return
+  fi
   if command -v bun >/dev/null 2>&1; then
     log "Bun already installed."
     return
@@ -198,6 +213,9 @@ install_rust() {
 install_dotnet() {
   if command -v dotnet >/dev/null 2>&1; then
     log ".NET already installed."
+    if is_redistributable; then
+      verify_dotnet_license
+    fi
     return
   fi
   local version="${DOTNET_SDK_VERSION:-8.0}"
@@ -223,6 +241,43 @@ install_dotnet() {
     printf 'export DOTNET_ROOT=%q\n' "/usr/share/dotnet"
   printf 'export PATH=%s\n' "/usr/share/dotnet:"'$PATH'
   } > /etc/profile.d/dotnet.sh
+
+  if is_redistributable; then
+    verify_dotnet_license
+  fi
+}
+
+verify_dotnet_license() {
+  local dotnet_root="/usr/share/dotnet"
+  local license=""
+  local notices=""
+
+  for candidate in "${dotnet_root}/LICENSE.txt" "${dotnet_root}/LICENSE" "${dotnet_root}/LICENSE.md"; do
+    if [ -f "$candidate" ]; then
+      license="$candidate"
+      break
+    fi
+  done
+  for candidate in "${dotnet_root}/ThirdPartyNotices.txt" "${dotnet_root}/ThirdPartyNotices" "${dotnet_root}/ThirdPartyNotices.md"; do
+    if [ -f "$candidate" ]; then
+      notices="$candidate"
+      break
+    fi
+  done
+
+  if [ -z "$license" ] || [ -z "$notices" ]; then
+    log "Redistributable build requires .NET SDK license and third-party notices."
+    log "Expected under ${dotnet_root} (LICENSE*, ThirdPartyNotices*)."
+    exit 1
+  fi
+
+  if ! grep -qi "MIT License" "$license"; then
+    log ".NET SDK license file does not appear to be MIT; refusing redistributable build."
+    exit 1
+  fi
+
+  install -d /usr/share/licenses/centaurxrunner/dotnet
+  cp -f "$license" "$notices" /usr/share/licenses/centaurxrunner/dotnet/
 }
 
 install_gradle() {
@@ -255,6 +310,10 @@ install_gradle() {
 }
 
 install_android_sdk() {
+  if is_redistributable; then
+    log "Redistributable build; skipping Android SDK (non-redistributable license)."
+    return
+  fi
   local sdk_root="${ANDROID_SDK_ROOT:-/opt/android-sdk}"
   local sdk_home="${ANDROID_HOME:-${sdk_root}}"
   local api="${ANDROID_API:-35}"

@@ -5,11 +5,15 @@ metadata:
 spec:
   containers:
     - name: centaurx
-      image: docker.io/pktsystems/centaurx:v0.5.0
+      image: docker.io/pktsystems/centaurx:v0.5.1
       args: ["serve", "-c", "/cx/config-for-container.yaml"]
       env:
         - name: HOME
           value: /centaurx
+        - name: CENTAURX_HOST_STATE_DIR
+          value: ${HOME}/.centaurx/state
+        - name: CENTAURX_HOST_REPO_ROOT
+          value: ${HOME}/.centaurx/repos
       ports:
         - containerPort: 27480
           hostPort: 27480

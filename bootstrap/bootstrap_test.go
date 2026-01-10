@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -158,4 +159,15 @@ func stripBootstrapPaths(cfg *appconfig.Config) {
 	cfg.SSH.AgentDir = ""
 	cfg.Auth.UserFile = ""
 	cfg.HTTP.SessionStorePath = ""
+}
+
+func TestResolveRunnerTag(t *testing.T) {
+	tag := resolveRunnerTag("", true)
+	if !strings.HasSuffix(tag, "-redistributable") {
+		t.Fatalf("expected redistributable suffix, got %q", tag)
+	}
+	override := resolveRunnerTag("v9.9.9", true)
+	if override != "v9.9.9" {
+		t.Fatalf("expected override tag, got %q", override)
+	}
 }

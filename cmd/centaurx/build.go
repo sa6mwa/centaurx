@@ -27,10 +27,11 @@ import (
 const defaultServerImage = "docker.io/pktsystems/centaurx:latest"
 
 type buildSharedOptions struct {
-	configPath    string
-	binPath       string
-	namespace     string
-	disableImport bool
+	configPath      string
+	binPath         string
+	namespace       string
+	disableImport   bool
+	redistributable bool
 }
 
 func newBuildCmd() *cobra.Command {
@@ -43,6 +44,7 @@ func newBuildCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&opts.binPath, "bin", "", "path to centaurx binary")
 	cmd.PersistentFlags().StringVar(&opts.namespace, "namespace", "", "override containerd namespace for import (containerd only)")
 	cmd.PersistentFlags().BoolVar(&opts.disableImport, "disable-import", false, "skip importing the built image into containerd (containerd only)")
+	cmd.PersistentFlags().BoolVar(&opts.redistributable, "redistributable", false, "build redistributable runner image (excludes non-redistributable tooling)")
 
 	cmd.AddCommand(newBuildServerCmd(opts))
 	cmd.AddCommand(newBuildRunnerCmd(opts))
@@ -92,7 +94,7 @@ func newBuildRunnerCmd(shared *buildSharedOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tags, err := buildTags(cfg.Runner.Image, tag)
+			tags, err := buildRunnerTags(cfg.Runner.Image, tag, shared.redistributable)
 			if err != nil {
 				return err
 			}
@@ -128,7 +130,7 @@ func newBuildAllCmd(shared *buildSharedOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			runnerTags, err := buildTags(cfg.Runner.Image, runnerTag)
+			runnerTags, err := buildRunnerTags(cfg.Runner.Image, runnerTag, shared.redistributable)
 			if err != nil {
 				return err
 			}
@@ -221,6 +223,9 @@ func buildRunner(ctx context.Context, cfg appconfig.Config, builder shipohoy.Bui
 		},
 		Timeout:    buildTimeout(cfg),
 		OutputPath: outputPath,
+	}
+	if shared != nil && shared.redistributable {
+		spec.BuildArgs["CX_REDISTRIBUTABLE"] = "1"
 	}
 	logger.Info("build.start", "target", "runner", "tags", tags, "output", outputPath)
 	_, err = runBuild(ctx, builder, spec, logger)
@@ -476,6 +481,30 @@ func buildTags(baseImage string, override string) ([]string, error) {
 	ver := version.Current()
 	if strings.TrimSpace(ver) == "" {
 		ver = "v0.0.0-unknown"
+	}
+	return []string{
+		base + ":" + ver,
+		base + ":latest",
+	}, nil
+}
+
+func buildRunnerTags(baseImage string, override string, redistributable bool) ([]string, error) {
+	if value := strings.TrimSpace(override); value != "" {
+		return []string{value}, nil
+	}
+	base := stripImageTag(baseImage)
+	if base == "" {
+		return nil, errors.New("image name is required")
+	}
+	ver := version.Current()
+	if strings.TrimSpace(ver) == "" {
+		ver = "v0.0.0-unknown"
+	}
+	if redistributable {
+		return []string{
+			base + ":" + ver + "-redistributable",
+			base + ":redistributable",
+		}, nil
 	}
 	return []string{
 		base + ":" + ver,

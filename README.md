@@ -77,6 +77,10 @@ CGO_ENABLED=0 go build -o bin/centaurx ./cmd/centaurx
 ```bash
 ./bin/centaurx bootstrap
 ```
+To generate configs for the redistributable runner image:
+```bash
+./bin/centaurx bootstrap --redistributable
+```
 
 Bootstrap outputs (default):
 - Host config: `~/.centaurx/config.yaml`
@@ -96,6 +100,7 @@ then start the server.
 
 ```bash
 ./bin/centaurx build runner
+./bin/centaurx build runner --redistributable
 ./bin/centaurx serve
 ```
 

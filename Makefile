@@ -14,6 +14,7 @@ LD_FLAGS ?= -s -w
 ANDROID_DIR ?= android
 APK_PATH ?= $(ANDROID_DIR)/app/build/outputs/apk/release/app-release.apk
 APK_OUT ?= $(dir $(BIN))centaurx.apk
+ZIP_OUT ?= $(dir $(BIN))centaurx-$(shell go env GOOS)-$(shell go env GOARCH)-$(shell go run ./internal/tools/versiongen).zip
 
 default: help
 
@@ -62,3 +63,4 @@ release: build
 	@mkdir -p $(dir $(BIN))
 	$(MAKE) -C $(ANDROID_DIR) release
 	cp $(APK_PATH) $(APK_OUT)
+	zip -j $(ZIP_OUT) $(BIN) $(APK_OUT)

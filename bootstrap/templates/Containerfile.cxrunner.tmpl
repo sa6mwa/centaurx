@@ -9,9 +9,10 @@ RUN install -m 0755 /opt/bin/centaurx /usr/bin/centaurx \
   && ln -sf /usr/bin/centaurx /usr/bin/codex-mock \
   && rm -rf /opt/bin \
   && mkdir -p /centaurx /cx
+ARG CX_REDISTRIBUTABLE=0
 ARG RUNNER_INSTALL={{ .RunnerInstallPath }}
 COPY ${RUNNER_INSTALL} /tmp/cxrunner-install.sh
-RUN bash /tmp/cxrunner-install.sh \
+RUN CX_REDISTRIBUTABLE=${CX_REDISTRIBUTABLE} bash /tmp/cxrunner-install.sh \
   && rm -f /tmp/cxrunner-install.sh
 ENV LOG_MODE=json
 ENTRYPOINT ["/usr/bin/centaurx"]

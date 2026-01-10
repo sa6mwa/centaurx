@@ -18,6 +18,7 @@ func newBootstrapCmd() *cobra.Command {
 	var overwrite bool
 	var imageTag string
 	var seedUsers bool
+	var redistributable bool
 	var overrides []string
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
@@ -37,8 +38,9 @@ func newBootstrapCmd() *cobra.Command {
 				out = filepath.Join(home, ".centaurx")
 			}
 			paths, err := bootstrap.WriteBootstrapWithOptions(out, overwrite, imageTag, bootstrap.Options{
-				SeedUsers: seedUsers,
-				Overrides: parsedOverrides,
+				SeedUsers:       seedUsers,
+				Overrides:       parsedOverrides,
+				Redistributable: redistributable,
 			})
 			if err != nil {
 				return err
@@ -62,6 +64,7 @@ func newBootstrapCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&overwrite, "force", false, "overwrite existing files")
 	cmd.Flags().StringVar(&imageTag, "image-tag", "", "image tag to use for generated images")
 	cmd.Flags().BoolVar(&seedUsers, "seed-users", false, "seed default users (admin)")
+	cmd.Flags().BoolVar(&redistributable, "redistributable", false, "use redistributable runner image tag in generated config")
 	cmd.Flags().StringArrayVarP(&overrides, "config", "c", nil, "config override (e.g. http.base_path=/cx or host:http.base_path=/cx)")
 	return cmd
 }

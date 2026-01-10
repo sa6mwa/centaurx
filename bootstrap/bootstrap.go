@@ -36,8 +36,9 @@ type Assets struct {
 
 // Options controls optional bootstrap behaviors.
 type Options struct {
-	SeedUsers bool
-	Overrides []ConfigOverride
+	SeedUsers       bool
+	Overrides       []ConfigOverride
+	Redistributable bool
 }
 
 // BundlePaths lists output locations for generated artifacts.
@@ -109,8 +110,8 @@ func baseConfig(opts Options, imageTag string) (appconfig.Config, error) {
 		cfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
 	}
 	cfg.ConfigVersion = appconfig.CurrentConfigVersion
-	tag := resolveImageTag(imageTag)
-	cfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	runnerTag := resolveRunnerTag(imageTag, opts.Redistributable)
+	cfg.Runner.Image = tagImage(defaultRunnerImage, runnerTag)
 	if cfg.Runner.Limits.CPUPercent == 0 {
 		cfg.Runner.Limits.CPUPercent = 70
 	}
@@ -397,8 +398,9 @@ func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string
 	if opts.SeedUsers {
 		hostCfg.Auth.SeedUsers = appconfig.DefaultSeedUsers()
 	}
-	tag := resolveImageTag(imageTag)
-	hostCfg.Runner.Image = tagImage(defaultRunnerImage, tag)
+	runnerTag := resolveRunnerTag(imageTag, opts.Redistributable)
+	serverTag := resolveImageTag(imageTag)
+	hostCfg.Runner.Image = tagImage(defaultRunnerImage, runnerTag)
 	if overrides := filterOverrides(opts.Overrides, OverrideHost); len(overrides) > 0 {
 		var err error
 		hostCfg, err = applyOverrides(hostCfg, overrides)
@@ -425,7 +427,7 @@ func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string
 	}
 	hostStateDir := filepath.Join(rootDir, "state")
 	hostRepoDir := filepath.Join(rootDir, "repos")
-	if bundle.ConfigYAML, err = overrideContainerConfig(bundle.ConfigYAML, hostStateDir, hostRepoDir, tag); err != nil {
+	if bundle.ConfigYAML, err = overrideContainerConfig(bundle.ConfigYAML, hostStateDir, hostRepoDir, runnerTag); err != nil {
 		return Paths{}, err
 	}
 	if overrides := filterOverrides(opts.Overrides, OverrideContainer); len(overrides) > 0 {
@@ -441,7 +443,7 @@ func WriteBootstrapWithOptions(outputDir string, overwrite bool, imageTag string
 		HostStateDir:      hostStateDir,
 		HostRepoDir:       hostRepoDir,
 		HostPodmanSock:    defaultPodmanSockPath(),
-		ServerImage:       tagImage(defaultServerImage, tag),
+		ServerImage:       tagImage(defaultServerImage, serverTag),
 	}
 	if bundle.ComposeYAML, err = renderComposeYAML(tplData); err != nil {
 		return Paths{}, err
@@ -748,6 +750,17 @@ func resolveImageTag(override string) string {
 		return "v0.0.0-unknown"
 	}
 	return value
+}
+
+func resolveRunnerTag(override string, redistributable bool) string {
+	if value := strings.TrimSpace(override); value != "" {
+		return value
+	}
+	tag := resolveImageTag("")
+	if redistributable {
+		return tag + "-redistributable"
+	}
+	return tag
 }
 
 func tagImage(base, tag string) string {

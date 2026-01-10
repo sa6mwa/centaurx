@@ -2,11 +2,13 @@ name: centaurx
 
 services:
   centaurx:
-    image: docker.io/pktsystems/centaurx:v0.5.0
+    image: docker.io/pktsystems/centaurx:v0.5.1
     container_name: centaurx
     read_only: true
     environment:
       - HOME=/centaurx
+      - CENTAURX_HOST_STATE_DIR=${HOME}/.centaurx/state
+      - CENTAURX_HOST_REPO_ROOT=${HOME}/.centaurx/repos
     tmpfs:
       - /tmp
       - /run

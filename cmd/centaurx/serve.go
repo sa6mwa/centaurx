@@ -296,9 +296,15 @@ func ensureUserHomes(cfg appconfig.Config, logger pslog.Logger) error {
 
 func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig.Config) error {
 	log := pslog.Ctx(ctx)
+	hostStateDir := strings.TrimSpace(cfg.Runner.HostStateDir)
+	if hostStateDir == "" {
+		hostStateDir = cfg.StateDir
+	}
 	verifyRoot := filepath.Join(cfg.StateDir, "verify", fmt.Sprintf("runner-%d", time.Now().UnixNano()))
+	hostVerifyRoot := filepath.Join(hostStateDir, "verify", filepath.Base(verifyRoot))
 	homeDir := filepath.Join(verifyRoot, "home")
-	log.Debug("runner runtime verify dirs", "root", verifyRoot, "home", homeDir)
+	hostHomeDir := filepath.Join(hostVerifyRoot, "home")
+	log.Debug("runner runtime verify dirs", "root", verifyRoot, "home", homeDir, "host_root", hostVerifyRoot, "host_state_dir", hostStateDir)
 	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		return fmt.Errorf("runner runtime verify home dir: %w", err)
 	}
@@ -345,7 +351,7 @@ func verifyRunnerRuntime(ctx context.Context, rt shipohoy.Runtime, cfg appconfig
 		LogBufferBytes: 64 * 1024,
 		ResourceCaps:   runnercontainer.ResourceCapsFromPercent(cfg.Runner.Limits.CPUPercent, cfg.Runner.Limits.MemoryPercent, log),
 		Mounts: []shipohoy.Mount{
-			{Source: homeDir, Target: containerHome, ReadOnly: false},
+			{Source: hostHomeDir, Target: containerHome, ReadOnly: false},
 		},
 		Tmpfs: []shipohoy.TmpfsMount{
 			{Target: "/tmp", Options: []string{"mode=1777", "rw"}},
